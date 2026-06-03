@@ -222,6 +222,16 @@ Fetches the scene JSON from the configured repo path, clears the current scene, 
 
 All GitHub API calls use `fetch()` directly — no Octokit dependency.
 
+> **Token storage & scope**
+> The access token is saved in `localStorage` under the key `git-settings`. It persists across browser sessions and is readable by any JavaScript running on the same origin — treat it like a password and never use a token with broader permissions than necessary.
+>
+> **Prefer a fine-grained, repo-specific PAT** over a classic token with full `repo` scope:
+> 1. On GitHub go to **Settings → Developer settings → Personal access tokens → Fine-grained tokens**
+> 2. Set **Repository access** to the single repo you are syncing scenes to
+> 3. Grant only **Contents: Read and write** — nothing else is needed
+>
+> A repo-scoped token limits blast radius if the value is ever read from `localStorage` by a browser extension or injected script. Classic `repo`-scope tokens grant write access to every repository in your account and should be avoided here.
+
 ---
 
 ## Architecture

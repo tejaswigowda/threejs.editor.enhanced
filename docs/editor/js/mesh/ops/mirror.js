@@ -87,6 +87,13 @@ export function mirrorMesh( editor, mesh, axis = 'x' ) {
 	mirrored.rotation.copy( mesh.rotation );
 	mirrored.scale.copy( mesh.scale );
 
+	// Recipe: provenance record — codegen emits comment + buffer fallback
+	mirrored.userData.recipe = [ {
+		op:     'mirrorMesh',
+		source: mesh.name || mesh.uuid.slice( 0, 8 ),
+		axis:   axisKey,
+	} ];
+
 	editor.execute( new AddObjectCommand( editor, mirrored ) );
 	return mirrored;
 

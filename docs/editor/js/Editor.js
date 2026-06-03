@@ -99,7 +99,11 @@ function Editor() {
 		morphTargetsUpdated: new Signal(),
 
 		toggleShell:          new Signal(),
-		showJSForSelection:   new Signal()
+		showJSForSelection:   new Signal(),
+
+		// Edit Mode signals
+		editModeChanged:      new Signal(),  // { active, mesh, mode? }
+		subObjectSelected:    new Signal(),  // { mode, ids }
 
 	};
 

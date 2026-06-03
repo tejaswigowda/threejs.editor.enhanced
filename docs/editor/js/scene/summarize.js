@@ -153,6 +153,15 @@ export function sceneContextString( editor ) {
 			// World size: geometry dims × scale — lets AI reason about placement
 			const ws = worldSize( obj );
 			if ( ws ) parts.push( 'size(' + r2( ws.x ) + ',' + r2( ws.y ) + ',' + r2( ws.z ) + ')' );
+
+			// Recipe tag — lets AI know this mesh has a recorded construction history
+			const recipe = obj.userData?.recipe;
+			if ( recipe?.length ) {
+
+				const ops = recipe.slice( 1 ).map( s => s.op ).join( '+' );
+				parts.push( ops ? `[recipe:${ recipe[ 0 ].type || '?' }+${ ops }]` : '[recipe]' );
+
+			}
 			if ( obj.material ) {
 
 				if ( obj.material.color ) parts.push( 'color:' + colorHex( obj.material.color ) );

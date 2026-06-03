@@ -17,6 +17,13 @@ import { mirrorMesh } from './mesh/ops/mirror.js';
 import { arrayDuplicate } from './mesh/ops/array.js';
 import { subdivide } from './mesh/ops/subdivide.js';
 import { serializeForAI as opsSchema } from './mesh/ops/index.js';
+import { EditModeController } from './mesh/EditModeController.js';
+import { extrude }     from './mesh/ops/extrude.js';
+import { inset }       from './mesh/ops/inset.js';
+import { bevel }       from './mesh/ops/bevel.js';
+import { deleteFaces } from './mesh/ops/delete.js';
+import { weld }        from './mesh/ops/weld.js';
+import { planarUV, boxUV } from './mesh/ops/uv.js';
 
 
 
@@ -163,6 +170,9 @@ function Shell( editor ) {
 
 	// Expose on editor so other modules (e.g. Menubar.Git) can use the loaded engine
 	editor.aiEngine = aiEngine;
+
+	// Edit Mode controller — shared across toolbar, shell, and AI
+	editor.editModeController = new EditModeController( editor );
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -377,6 +387,27 @@ function Shell( editor ) {
 
 				// Diagnostic: print the registered op schema
 				listOps: () => opsSchema(),
+
+				// ── Edit Mode ops ────────────────────────────────────────────────────
+				// Enter Edit Mode: Tab key, or enterEditMode(). Exit: Tab or exitEditMode().
+				// Keys: 1=vertex 2=edge 3=face  A=select all/none
+
+				enterEditMode: ( mesh ) => editor.editModeController.enter( mesh ?? editor.selected ),
+				exitEditMode:  ()       => editor.editModeController.exit(),
+
+				extrude:     ( distance = 1 )    => editor.editModeController.runOp( ( em, sel ) => extrude( em, sel, { distance } ),    'extrude',     { distance } ),
+				inset:       ( amount = 0.2 )    => editor.editModeController.runOp( ( em, sel ) => inset( em, sel, { amount } ),       'inset',       { amount } ),
+				bevel:       ( amount = 0.1 )    => editor.editModeController.runOp( ( em, sel ) => bevel( em, sel, { amount } ),       'bevel',       { amount } ),
+				deleteFaces: ()                  => editor.editModeController.runOp( ( em, sel ) => deleteFaces( em, sel ),              'deleteFaces', {} ),
+				weld:        ( threshold = 0.01 )=> editor.editModeController.runOp( ( em, sel ) => weld( em, sel, { threshold } ),     'weld',        { threshold } ),
+				planarUV:    ( axis = 'y' )      => editor.editModeController.runOp( ( em, sel ) => planarUV( em, sel, axis ),          'planarUV',    { axis } ),
+				boxUV:       ()                  => editor.editModeController.runOp( ( em, sel ) => boxUV( em, sel ),                   'boxUV',       {} ),
+
+				// ── Selection helpers (used directly and in recipe-replayed code) ────────
+				selectFaces:    ( ...ids ) => { const emc = editor.editModeController; if ( emc.active ) { emc.selection.setMode( 'face' ); ids.forEach( id => emc.selection.add( id ) ); emc.updateOverlay(); } },
+				selectVertices: ( ...ids ) => { const emc = editor.editModeController; if ( emc.active ) { emc.selection.setMode( 'vertex' ); ids.forEach( id => emc.selection.add( id ) ); emc.updateOverlay(); } },
+				selectEdges:    ( ...ids ) => { const emc = editor.editModeController; if ( emc.active ) { emc.selection.setMode( 'edge' ); ids.forEach( id => emc.selection.add( id ) ); emc.updateOverlay(); } },
+				clearSelection: ()         => { const emc = editor.editModeController; if ( emc.active ) { emc.selection.clear(); emc.updateOverlay(); } },
 
 				// ── Spatial helpers ───────────────────────────────────────────────────
 				// These are the correct way to reason about world-space dimensions;
@@ -734,7 +765,8 @@ function Shell( editor ) {
 	appendOutput( 'spatial: getSize(obj)  getTopY(obj)  getCenter(obj)  placeOnTop(child,target)', 'info' );
 	appendOutput( 'AI Q&A: prefix AI input with ? to ask questions  —  or call askScene("question") in REPL', 'info' );
 	appendOutput( 'codegen: showJS()  objectToJS(obj)  sceneToJS()  sceneEqual(a,b)', 'info' );
-	appendOutput( 'modeling ops: booleanUnion(a,b)  booleanSubtract(a,b)  booleanIntersect(a,b)  mirrorMesh(m,axis)  arrayDuplicate(m,n,dx,dy,dz)  subdivide(m,iters)  — type listOps() for schema', 'info' );
+	appendOutput( 'modeling ops: booleanUnion(a,b)  booleanSubtract(a,b)  booleanIntersect(a,b)  mirrorMesh(m,axis)  arrayDuplicate(m,n,dx,dy,dz)  subdivide(m,iters)', 'info' );
+	appendOutput( 'edit mode: enterEditMode()  exitEditMode()  extrude(d)  inset(t)  bevel(t)  deleteFaces()  weld(eps)  planarUV(axis)  boxUV()  — Tab to toggle', 'info' );
 
 	return container;
 

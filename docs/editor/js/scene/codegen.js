@@ -20,6 +20,43 @@
 import { deriveArgs, isReconstructable } from './geometryParams.js';
 import { materialToOptions, isSupportedMaterial } from './materialProps.js';
 
+// ── Recipe helpers ────────────────────────────────────────────────────────────
+
+// Op names that are independently replayable (primitive constructor + these ops = exact mesh)
+const REPLAYABLE_OPS = new Set( [ 'extrude', 'inset', 'bevel', 'deleteFaces', 'weld', 'planarUV', 'boxUV' ] );
+
+/**
+ * Summarise a recipe array as a human-readable one-liner.
+ */
+function recipeDesc( recipe ) {
+
+	return recipe.map( step => {
+
+		if ( step.op === 'primitive' ) return `${ step.type }(${ ( step.args || [] ).join( ',' ) })`;
+		if ( step.op.startsWith( 'boolean' ) ) return `${ step.op }("${ step.a }", "${ step.b }")`;
+		if ( step.op === 'mirrorMesh' ) return `mirrorMesh("${ step.source }", '${ step.axis }')`;
+
+		const ps = Object.entries( step.params || {} )
+			.map( ( [ k, v ] ) => `${ k }:${ v }` ).join( ',' );
+		return `${ step.op }(${ ps })`;
+
+	} ).join( ' → ' );
+
+}
+
+/**
+ * Return true if a recipe can be exactly replayed from its primitive + edit ops.
+ * Recipes containing boolean/mirror/array provenance steps are descriptive-only.
+ */
+function isReplayable( recipe ) {
+
+	if ( ! recipe || ! recipe.length ) return false;
+	const [ head, ...rest ] = recipe;
+	if ( head.op !== 'primitive' || head.type === 'BufferGeometry' ) return false;
+	return rest.every( s => REPLAYABLE_OPS.has( s.op ) );
+
+}
+
 // ── Transform helpers ─────────────────────────────────────────────────────────
 
 function r5( v ) { return Math.round( v * 1e5 ) / 1e5; }
@@ -243,6 +280,112 @@ function emitObject( objJSON, geomMap, matMap, sharedGeom, sharedMat, varName, i
 	// ── Mesh ──────────────────────────────────────────────────────────────────
 	if ( type === 'Mesh' || type === 'SkinnedMesh' ) {
 
+		const recipe = objJSON.userData?.recipe;
+
+		// ── Recipe path (replayable: primitive + edit ops) ────────────────────
+		if ( isReplayable( recipe ) ) {
+
+			const matJSON = matMap.get( objJSON.material );
+			const matVar  = `mat_${ varName }`;
+
+			if ( matJSON ) {
+
+				const m = emitMaterial( matJSON, matVar, indent );
+				lines.push( m.code );
+				if ( m.lossy ) { lossy = true; lossyReasons.push( m.lossyReason ); }
+
+			} else {
+
+				lines.push( `${ indent }var ${ matVar } = new THREE.MeshStandardMaterial();` );
+
+			}
+
+			const [ head, ...steps ] = recipe;
+			const argsStr = ( head.args || [] ).map( a =>
+				typeof a === 'number' ? r5( a ) : JSON.stringify( a )
+			).join( ', ' );
+
+			lines.push( `${ indent }// Recipe: ${ recipeDesc( recipe ) }` );
+			lines.push( `${ indent }var ${ varName } = new THREE.Mesh(new THREE.${ head.type }(${ argsStr }), ${ matVar });` );
+
+			if ( steps.length ) {
+
+				lines.push( `${ indent }${ varName }.userData._recipeReplay = true;` );
+				lines.push( `${ indent }var _emc = editor.editModeController;` );
+				lines.push( `${ indent }_emc.enter(${ varName });` );
+
+				for ( const step of steps ) {
+
+					if ( step.selection?.ids?.length ) {
+
+						const fn = step.selection.mode === 'vertex' ? 'selectVertices'
+							: step.selection.mode === 'edge' ? 'selectEdges' : 'selectFaces';
+						lines.push( `${ indent }${ fn }(${ step.selection.ids.join( ', ' ) });` );
+
+					}
+
+					const ps = Object.values( step.params || {} )
+						.map( v => typeof v === 'string' ? JSON.stringify( v ) : r5( v ) )
+						.join( ', ' );
+					lines.push( `${ indent }${ step.op }(${ ps });` );
+
+				}
+
+				lines.push( `${ indent }_emc.exit();` );
+				lines.push( `${ indent }delete ${ varName }.userData._recipeReplay;` );
+
+			}
+
+			// Name + transform + children handled below — skip to the end of Mesh block
+
+		// ── Provenance-only recipe (boolean / mirror result) ──────────────────
+		} else if ( recipe?.length ) {
+
+			const desc = recipeDesc( recipe );
+			lines.push( `${ indent }// Recipe (non-replayable — geometry serialised below): ${ desc }` );
+
+			// Fall through to normal geometry + material emission
+			const geomJSON = geomMap.get( objJSON.geometry );
+			const matJSON  = matMap.get(  objJSON.material );
+
+			let geomVar;
+
+			if ( geomJSON ) {
+
+				geomVar = `geom_${ varName }`;
+				const g = emitGeometry( geomJSON, geomVar, indent );
+				lines.push( g.code );
+				if ( g.lossy ) { lossy = true; lossyReasons.push( g.lossyReason ); }
+
+			} else {
+
+				geomVar = `geom_${ varName }`;
+				lines.push( `${ indent }var ${ geomVar } = new THREE.BufferGeometry();` );
+				lossy = true; lossyReasons.push( 'Missing geometry' );
+
+			}
+
+			let matVar;
+
+			if ( matJSON ) {
+
+				matVar = `mat_${ varName }`;
+				const m = emitMaterial( matJSON, matVar, indent );
+				lines.push( m.code );
+				if ( m.lossy ) { lossy = true; lossyReasons.push( m.lossyReason ); }
+
+			} else {
+
+				matVar = `mat_${ varName }`;
+				lines.push( `${ indent }var ${ matVar } = new THREE.MeshStandardMaterial();` );
+
+			}
+
+			lines.push( `${ indent }var ${ varName } = new THREE.Mesh(${ geomVar }, ${ matVar });` );
+
+		// ── Normal path (no recipe) ───────────────────────────────────────────
+		} else {
+
 		const geomJSON = geomMap.get( objJSON.geometry );
 		const matJSON  = matMap.get(  objJSON.material );
 
@@ -296,6 +439,8 @@ function emitObject( objJSON, geomMap, matMap, sharedGeom, sharedMat, varName, i
 		}
 
 		lines.push( `${indent}var ${varName} = new THREE.Mesh(${geomVar}, ${matVar});` );
+
+		} // end normal path
 
 	// ── Group / Object3D ──────────────────────────────────────────────────────
 	} else if ( type === 'Group' || type === 'Object3D' ) {

@@ -98,6 +98,15 @@ function _runBoolean( editor, meshA, meshB, csgOp, opLabel, keepInputs ) {
 	result.receiveShadow = meshA.receiveShadow;
 	result.geometry.computeVertexNormals();
 
+	// Recipe: describes provenance but is not independently replayable
+	// (inputs are consumed; codegen emits a comment + buffer fallback for these)
+	result.userData.recipe = [ {
+		op:    'boolean' + opLabel,
+		a:     meshA.name || meshA.uuid.slice( 0, 8 ),
+		b:     meshB.name || meshB.uuid.slice( 0, 8 ),
+		label: opLabel,
+	} ];
+
 	const cmd = new BooleanOpCommand( editor, opLabel, result, meshA, meshB, keepInputs );
 	editor.execute( cmd );
 	return result;
