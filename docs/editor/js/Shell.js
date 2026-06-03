@@ -802,23 +802,20 @@ function Shell( editor ) {
 	} );
 
 	// ── Toggle signal ─────────────────────────────────────────────────────────
+	// Tab visibility is owned by the Sidebar; here we just focus the input when
+	// the shell tab is (re)opened.
 
 	signals.toggleShell.add( function () {
 
-		const hidden = container.dom.style.display === 'none';
-		container.setDisplay( hidden ? '' : 'none' );
-		if ( hidden ) setTimeout( () => input.focus(), 50 );
+		setTimeout( () => input.focus(), 50 );
 
 	} );
 
 	// ── Show JS for selection signal ──────────────────────────────────────────
 	// Triggered from View → Show JS for Selection.
-	// Ensures the shell is visible, then runs showJS() for the selected object.
+	// The Sidebar selects the shell tab; here we print JS for the selected object.
 
 	signals.showJSForSelection.add( function () {
-
-		// Make shell visible
-		container.setDisplay( '' );
 
 		const obj = editor.selected;
 

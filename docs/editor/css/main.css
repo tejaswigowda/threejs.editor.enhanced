@@ -411,27 +411,29 @@ hr {
 }
 
 /* JS Shell panel */
-#shell {
-	position: absolute;
-	left: 0;
-	right: 350px;
-	bottom: 0;
-	height: 280px;
-	background: #1a1a2e;
-	border-top: 2px solid #444;
+/* Scoped under #sidebar so it outranks `#sidebar .Panel` (the Shell root is a
+   UIPanel and would otherwise inherit 10px padding + a border, overflowing). */
+#sidebar #shell {
 	display: flex;
 	flex-direction: column;
+	box-sizing: border-box;
+	height: calc(100vh - 72px);   /* viewport minus menubar (36) + tab row (36) */
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: #1a1a2e;
 	font-family: 'Courier New', Courier, monospace;
 	font-size: 13px;
 	color: #ddd;
-	z-index: 90;
 }
 
 #shell-header {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 8px;
-	padding: 4px 10px;
+	column-gap: 8px;
+	row-gap: 4px;
+	padding: 6px 10px;
 	background: #111;
 	border-bottom: 1px solid #333;
 	flex-shrink: 0;
@@ -442,7 +444,20 @@ hr {
 #shell-header-title {
 	color: #7ec8e3;
 	font-weight: bold;
-	flex-shrink: 0;
+	flex: 0 0 auto;
+	order: 1;
+}
+
+#shell-ai-status {
+	color: #6a9;
+	font-size: 11px;
+	order: 2;
+	flex: 1 1 auto;            /* fills the rest of the first line */
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: right;
 }
 
 #shell-model-select {
@@ -452,7 +467,8 @@ hr {
 	border-radius: 3px;
 	font-size: 11px;
 	padding: 2px 4px;
-	flex: 1;
+	order: 3;
+	flex: 1 1 140px;          /* wraps to its own line, grows to fill */
 	min-width: 0;
 }
 
@@ -462,25 +478,14 @@ hr {
 	border: none;
 	border-radius: 3px;
 	font-size: 11px;
-	padding: 3px 8px;
+	padding: 3px 10px;
 	cursor: pointer;
-	flex-shrink: 0;
+	order: 4;
+	flex: 0 0 auto;
 }
 
 #shell-load-btn:disabled { opacity: 0.5; cursor: default; }
 #shell-load-btn:hover:not(:disabled) { background: #3a6aaf; }
-
-#shell-ai-status {
-	color: #6a9;
-	font-size: 11px;
-	flex-shrink: 0;
-	min-width: 0;
-	max-width: 260px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	text-align: right;
-}
 
 #shell-progress-wrap {
 	height: 3px;

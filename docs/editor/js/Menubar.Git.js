@@ -151,6 +151,37 @@ async function ghGet( path, token ) {
 
 }
 
+// Fetch a file's content as parsed JSON using the GitHub "raw" media type.
+// Unlike the default JSON wrapper (which caps at 1 MB and returns empty content
+// for larger files), raw returns the file bytes directly up to 100 MB and lets
+// fetch decode UTF-8 natively — so no base64/atob and no truncation.
+async function ghGetSceneJSON( path, token ) {
+
+	const sep = path.includes( '?' ) ? '&' : '?';
+	const url = `https://api.github.com${ path }${ sep }_ts=${ Date.now() }`;
+
+	const res = await fetch( url, {
+		headers: { Authorization: `Bearer ${ token }`, Accept: 'application/vnd.github.raw' },
+		cache: 'no-store',
+	} );
+
+	if ( ! res.ok ) throw new Error( `GitHub ${ res.status }: ${ await res.text() }` );
+
+	const text = await res.text();
+	if ( ! text.trim() ) throw new Error( 'scene file is empty' );
+
+	try {
+
+		return JSON.parse( text );
+
+	} catch ( e ) {
+
+		throw new Error( 'scene file is not valid JSON — ' + e.message );
+
+	}
+
+}
+
 async function ghPut( path, body, token ) {
 
 	const res = await fetch( `https://api.github.com${ path }`, {
@@ -237,8 +268,7 @@ function MenubarGit( editor ) {
 		try {
 
 			const apiPath  = `/repos/${ parsed.owner }/${ parsed.repo }/contents/${ cfg.scenePath || 'scene.json' }?ref=${ cfg.branch || 'main' }`;
-			const file     = await ghGet( apiPath, cfg.pat );
-			const remote   = JSON.parse( atob( file.content.replace( /\n/g, '' ) ) );
+			const remote   = await ghGetSceneJSON( apiPath, cfg.pat );
 			const local    = editor.scene.toJSON();
 			const diff     = diffScenes( local, remote );
 
@@ -461,8 +491,7 @@ class GitLoadDialog {
 			try {
 
 				const apiPath = `/repos/${ parsed.owner }/${ parsed.repo }/contents/${ cfg.scenePath || 'scene.json' }?ref=${ cfg.branch || 'main' }`;
-				const file = await ghGet( apiPath, cfg.pat );
-				const json = JSON.parse( atob( file.content.replace( /\n/g, '' ) ) );
+				const json = await ghGetSceneJSON( apiPath, cfg.pat );
 				editor.clear();
 				await editor.fromJSON( json );
 
@@ -675,8 +704,7 @@ export async function autoLoadFromGit( editor ) {
 	try {
 
 		const apiPath = `/repos/${ parsed.owner }/${ parsed.repo }/contents/${ cfg.scenePath || 'scene.json' }?ref=${ cfg.branch || 'main' }`;
-		const file    = await ghGet( apiPath, cfg.pat );
-		const json    = JSON.parse( atob( file.content.replace( /\n/g, '' ) ) );
+		const json    = await ghGetSceneJSON( apiPath, cfg.pat );
 
 		editor.clear();
 		await editor.fromJSON( json );
