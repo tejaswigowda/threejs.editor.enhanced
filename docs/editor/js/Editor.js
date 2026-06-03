@@ -96,7 +96,9 @@ function Editor() {
 		animationPanelChanged: new Signal(),
 		animationPanelResized: new Signal(),
 
-		morphTargetsUpdated: new Signal()
+		morphTargetsUpdated: new Signal(),
+
+		toggleShell: new Signal()
 
 	};
 

@@ -71,6 +71,7 @@
 			import { Resizer } from './editor/js/Resizer.js';
 			import { AnimationResizer } from './editor/js/AnimationResizer.js';
 			import { Animation } from './editor/js/Animation.js';
+			import { Shell } from './editor/js/Shell.js';
 
 			import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
 
@@ -112,6 +113,9 @@
 
 			const animationResizer = new AnimationResizer( editor );
 			document.body.appendChild( animationResizer.dom );
+
+			const shell = new Shell( editor );
+			document.body.appendChild( shell.dom );
 
 			editor.signals.animationPanelChanged.add( function ( height ) {
 

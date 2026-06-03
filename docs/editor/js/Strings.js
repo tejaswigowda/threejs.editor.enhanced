@@ -101,6 +101,7 @@ function Strings( config ) {
 			'menubar/view/cameraHelpers': 'کمک کننده دوربین',
 			'menubar/view/lightHelpers': 'کمک کننده نور',
 			'menubar/view/skeletonHelpers': 'کمک کننده اسکلتون',
+			'menubar/view/shell': 'JS Shell',
 
 			'menubar/render': 'رندر',
 			'menubar/render/image': 'عکس',
@@ -550,6 +551,7 @@ function Strings( config ) {
 			'menubar/view/cameraHelpers': 'Camera Helpers',
 			'menubar/view/lightHelpers': 'Light Helpers',
 			'menubar/view/skeletonHelpers': 'Skeleton Helpers',
+			'menubar/view/shell': 'JS Shell',
 
 			'menubar/render': 'Render',
 			'menubar/render/image': 'Image',
@@ -1000,6 +1002,7 @@ function Strings( config ) {
 			'menubar/view/cameraHelpers': 'Aides à la caméra',
 			'menubar/view/lightHelpers': 'Aides Lumière',
 			'menubar/view/skeletonHelpers': 'Aides squelettes',
+			'menubar/view/shell': 'JS Shell',
 
 			'menubar/render': 'Rendu',
 			'menubar/render/image': 'Image',
@@ -1450,6 +1453,7 @@ function Strings( config ) {
 			'menubar/view/cameraHelpers': '相机助手',
 			'menubar/view/lightHelpers': '光助手',
 			'menubar/view/skeletonHelpers': '骷髅助手',
+			'menubar/view/shell': 'JS Shell',
 
 			'menubar/render': '渲染',
 			'menubar/render/image': '图片',
@@ -1900,6 +1904,7 @@ function Strings( config ) {
 			'menubar/view/cameraHelpers': 'カメラヘルパー',
 			'menubar/view/lightHelpers': 'ライトヘルパー',
 			'menubar/view/skeletonHelpers': 'スケルトンヘルパー',
+			'menubar/view/shell': 'JS Shell',
 
 			'menubar/render': 'レンダー',
 			'menubar/render/image': '画像',
@@ -2349,6 +2354,7 @@ function Strings( config ) {
 			'menubar/view/cameraHelpers': '카메라 도우미',
 			'menubar/view/lightHelpers': '조명 도우미',
 			'menubar/view/skeletonHelpers': '골격 도우미',
+			'menubar/view/shell': 'JS Shell',
 
 			'menubar/render': '렌더',
 			'menubar/render/image': '이미지',

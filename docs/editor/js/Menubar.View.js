@@ -98,6 +98,22 @@ function MenubarView( editor ) {
 
 	options.add( new UIHorizontalRule() );
 
+	// JS Shell
+
+	option = new UIRow();
+	option.setClass( 'option' );
+	option.setTextContent( strings.getKey( 'menubar/view/shell' ) );
+	option.onClick( function () {
+
+		signals.toggleShell.dispatch();
+
+	} );
+	options.add( option );
+
+	//
+
+	options.add( new UIHorizontalRule() );
+
 	// Fullscreen
 
 	option = new UIRow();

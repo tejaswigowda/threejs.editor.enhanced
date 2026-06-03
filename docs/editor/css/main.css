@@ -410,6 +410,77 @@ hr {
 	bottom: 0;
 }
 
+/* JS Shell panel */
+#shell {
+	position: absolute;
+	left: 0;
+	right: 350px;
+	bottom: 0;
+	height: 280px;
+	background: #1a1a2e;
+	border-top: 2px solid #444;
+	display: flex;
+	flex-direction: column;
+	font-family: 'Courier New', Courier, monospace;
+	font-size: 13px;
+	color: #ddd;
+	z-index: 90;
+}
+
+#shell-output {
+	flex: 1;
+	overflow-y: auto;
+	padding: 8px 12px 4px;
+}
+
+#shell-input-row {
+	display: flex;
+	align-items: flex-start;
+	padding: 6px 12px;
+	border-top: 1px solid #333;
+	background: #111;
+	flex-shrink: 0;
+}
+
+.shell-prompt {
+	color: #7ec8e3;
+	flex-shrink: 0;
+	padding-top: 2px;
+	margin-right: 6px;
+	user-select: none;
+}
+
+#shell-input {
+	flex: 1;
+	background: transparent;
+	border: none;
+	color: #fff;
+	font-family: 'Courier New', Courier, monospace;
+	font-size: 13px;
+	outline: none;
+	resize: none;
+	line-height: 1.5;
+	max-height: 120px;
+	overflow-y: auto;
+	padding: 0;
+}
+
+#shell-input::placeholder {
+	color: #555;
+}
+
+.shell-line {
+	padding: 1px 0;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.shell-cmd    { color: #bbb; }
+.shell-result { color: #79c0ff; }
+.shell-error  { color: #ff6b6b; }
+.shell-info   { color: #6a737d; font-style: italic; }
+
 #menubar {
 	position: absolute;
 	width: 100%;
