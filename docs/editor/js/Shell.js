@@ -691,6 +691,30 @@ function Shell( editor ) {
 
 				},
 
+				// ── Third-party API ───────────────────────────────────────────────────
+				// fetchAPI(url, options?) — call any HTTP API from the console and get
+				// the parsed body back (JSON → object, else text). A plain-object body
+				// is auto-JSON-encoded. `await` it:
+				//   const d = await fetchAPI('https://api.example.com/items');
+				//   await fetchAPI(url, { method:'POST', headers:{Authorization:'Bearer …'}, body:{x:1} });
+				// NOTE: this reaches the network — data leaves the device, and the target
+				// must allow CORS. (The editor is otherwise fully on-device.)
+				fetchAPI: async function ( url, options = {} ) {
+
+					const opts = { ...options };
+					if ( opts.body && typeof opts.body === 'object' && ! ( opts.body instanceof FormData ) ) {
+
+						opts.headers = { 'Content-Type': 'application/json', ...( opts.headers || {} ) };
+						opts.body = JSON.stringify( opts.body );
+
+					}
+					const res = await fetch( url, opts );
+					if ( ! res.ok ) throw new Error( `fetchAPI: ${ res.status } ${ res.statusText } — ${ url }` );
+					const ct = res.headers.get( 'content-type' ) || '';
+					return ct.includes( 'json' ) ? res.json() : res.text();
+
+				},
+
 				// ── Scene Q&A ─────────────────────────────────────────────────────────
 				// askScene(question) — ask the AI a natural-language question about the
 				// scene. Answer streams into the shell as text; nothing is executed.
@@ -731,6 +755,59 @@ function Shell( editor ) {
 
 					} );
 
+				},
+
+				// ── External API Helpers (Dev Mode) ───────────────────────────────────
+				// getAvailableModels() — fetch list of available models (WebLLM + APIs)
+				getAvailableModels: async function () {
+					try {
+						const res = await fetch('/api/models');
+						const data = await res.json();
+						console.table(data.models.map(m => ({
+							id: m.id,
+							label: m.label,
+							source: m.source,
+							vram: m.vram_required_MB ? `${m.vram_required_MB}MB` : 'N/A'
+						})));
+						return data;
+					} catch (e) {
+						appendOutput('Error fetching models: ' + e.message, 'error');
+						return null;
+					}
+				},
+
+				// askExternal(model, question) — ask an external API (Ollama, OpenAI)
+				askExternal: async function (model, question) {
+					try {
+						const messages = [{ role: 'user', content: question }];
+						const res = await fetch('/api/chat', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 2000 })
+						});
+						const data = await res.json();
+						
+						// Handle both Ollama and OpenAI response formats
+						const answer = data.message?.content || data.choices?.[0]?.message?.content || data.error;
+						appendOutput(answer || 'No response', answer ? 'output' : 'error');
+						return answer;
+					} catch (e) {
+						appendOutput('Error querying model: ' + e.message, 'error');
+						return null;
+					}
+				},
+
+				// checkApiHealth() — verify external services are running
+				checkApiHealth: async function () {
+					try {
+						const res = await fetch('/api/health');
+						const health = await res.json();
+						console.log('🔍 API Health:', health);
+						return health;
+					} catch (e) {
+						appendOutput('API health check failed: ' + e.message, 'error');
+						return null;
+					}
 				},
 
 				// ── Eval harness ──────────────────────────────────────────────────────
@@ -1167,6 +1244,8 @@ function Shell( editor ) {
 	appendOutput( 'scene intelligence: findByDescription("right arm of the red person")  describeObject(o)  listCandidates(text)  resolvePartAI(text)', 'info' );
 	appendOutput( 'agentic tools: findAPI(text)  whatsVisible()  whatsAt(x,y)  — AI requests run a bounded generate→validate→execute→observe→fix loop', 'info' );
 	appendOutput( 'spatial: getSize(obj)  getTopY(obj)  getCenter(obj)  placeOnTop(child,target)', 'info' );
+	appendOutput( '3rd-party API: const d = await fetchAPI(url[, {method,headers,body}])  — JSON→object (network/CORS apply)', 'info' );
+	appendOutput( 'dev API (--dev mode): getAvailableModels()  askExternal(model,q)  checkApiHealth()  — Ollama + OpenAI support', 'info' );
 	appendOutput( 'AI Q&A: prefix AI input with ? to ask questions  —  or call askScene("question") in REPL', 'info' );
 	appendOutput( 'AI eval: evalAI() runs the standing eval set (pong/chess/hoop…) and prints a structure/spatial/semantic table', 'info' );
 	appendOutput( 'codegen: showJS()  objectToJS(obj)  sceneToJS()  sceneEqual(a,b)', 'info' );
