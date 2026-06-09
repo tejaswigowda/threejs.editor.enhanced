@@ -9,6 +9,8 @@ import { LoaderUtils } from './LoaderUtils.js';
 
 import { GLTFImportDialog } from './GLTFImportDialog.js';
 
+import { runImportPipeline } from './import/pipeline.js';
+
 import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
 
 function Loader( editor ) {
@@ -349,6 +351,7 @@ function Loader( editor ) {
 					const object = loader.parse( contents );
 
 					editor.execute( new AddObjectCommand( editor, object ) );
+					runImportPipeline( editor, object, { log: editor.importLog } );
 
 				}, false );
 				reader.readAsArrayBuffer( file );
@@ -386,6 +389,7 @@ function Loader( editor ) {
 							} else {
 
 								editor.execute( new AddObjectCommand( editor, scene ) );
+								runImportPipeline( editor, scene, { log: editor.importLog } );
 
 							}
 
@@ -436,6 +440,7 @@ function Loader( editor ) {
 							} else {
 
 								editor.execute( new AddObjectCommand( editor, scene ) );
+								runImportPipeline( editor, scene, { log: editor.importLog } );
 
 							}
 
@@ -581,6 +586,7 @@ function Loader( editor ) {
 					object.name = filename;
 
 					editor.execute( new AddObjectCommand( editor, object ) );
+					runImportPipeline( editor, object, { log: editor.importLog } );
 
 				}, false );
 				reader.readAsText( file );

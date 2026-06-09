@@ -14,6 +14,47 @@
 import { indexSubtree } from './descriptors.js';
 import { parseQuery, scoreCandidates, resolveWithLLM } from './resolver.js';
 import { registerOp } from '../mesh/ops/index.js';
+import { decodeName } from '../scene/summarize.js';
+import { labelImportedAsset } from '../import/labelPass.js';
+
+// ── Self-healing labels ───────────────────────────────────────────────────────
+// An asset imported BEFORE the AI engine was ready never got its Stage-4 labels
+// (labelImportedAsset returned 'no-llm' and left no labelPass). Then every part
+// query is unresolvable. When a part query comes in, the engine IS ready, so
+// kick off the labeling pass for any imported-but-unlabeled root (fire-and-forget)
+// and tell the user to re-run once. Idempotent; runs at most once per root.
+
+const _labelingRoots = new WeakSet();
+
+function ensureLabeled( editor ) {
+
+	const eng = editor && editor.aiEngine;
+	if ( ! eng || ! eng.ready || ! editor.scene ) return false;
+
+	let pending = false;
+	for ( const root of editor.scene.children ) {
+
+		if ( root.isCamera || ! root.userData || ! root.userData.imported ) continue;
+		const lp = root.userData.labelPass;
+		if ( lp && lp.labeled > 0 ) continue;       // already labeled
+		if ( _labelingRoots.has( root ) ) { pending = true; continue; } // in flight
+
+		_labelingRoots.add( root );
+		pending = true;
+		Promise.resolve( labelImportedAsset( editor, root, { force: true } ) )
+			.then( res => {
+
+				if ( editor.importLog ) editor.importLog( '🏷 Labeled ' + ( res.labeled || 0 ) + ' parts of "' + ( decodeName( root.name ) || 'asset' ) + '". Re-run your command.' );
+				if ( editor.signals && editor.signals.sceneGraphChanged ) editor.signals.sceneGraphChanged.dispatch();
+
+			} )
+			.catch( () => {} )
+			.finally( () => _labelingRoots.delete( root ) );
+
+	}
+	return pending;
+
+}
 
 // ── Index maintenance ─────────────────────────────────────────────────────────
 
@@ -87,7 +128,9 @@ export function findByDescription( editor, text ) {
 
 	if ( ranked.length === 0 ) {
 
-		return { node: null, confidence: 0, method: 'none', candidates: [] };
+		const res = { node: null, confidence: 0, method: 'none', candidates: [] };
+		if ( ensureLabeled( editor ) ) res.labeling = true;
+		return res;
 
 	}
 
@@ -103,8 +146,11 @@ export function findByDescription( editor, text ) {
 
 	}
 
-	// Ambiguous — surface candidates, do not guess
-	return { node: top.node, confidence, method: 'ambiguous', candidates: ranked.slice( 0, 6 ) };
+	// Ambiguous — surface candidates, do not guess. If the asset was never labeled,
+	// kick off labeling so the next try can resolve deterministically.
+	const res = { node: top.node, confidence, method: 'ambiguous', candidates: ranked.slice( 0, 6 ) };
+	if ( ensureLabeled( editor ) ) res.labeling = true;
+	return res;
 
 }
 
@@ -122,6 +168,119 @@ export async function resolvePartAI( editor, text ) {
 	if ( b && b.node ) return { node: b.node, confidence: b.confidence, method: 'B', candidates: a.candidates };
 
 	return a; // fall back to ambiguous/none from Path A
+
+}
+
+// ── findParts: PLURAL-aware part resolution ───────────────────────────────────
+// "make the wheels black" references FOUR parts, not one. findByDescription
+// returns a single node, which made the model fall back to recoloring EVERY mesh
+// of the asset. findParts returns ALL meshes matching the part noun, so the AI
+// can edit just that subset (the wheels) instead of the whole truck.
+
+const PART_STOP = new Set( [ 'the', 'a', 'an', 'and', 'or', 'of', 'on', 'in', 'to', 'into',
+	'make', 'turn', 'set', 'change', 'paint', 'recolor', 'colour', 'color', 'this', 'that',
+	'these', 'those', 'with', 'for', 'all', 'every', 'both', 'each', 'two', 'three', 'four',
+	'part', 'parts', 'piece', 'pieces', 'whole', 'entire', 'bigger', 'smaller', 'larger',
+	// colors carry no part identity
+	'red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'magenta',
+	'pink', 'brown', 'gray', 'grey', 'black', 'white', 'dark', 'light', 'bright' ] );
+
+// Naive singularizer: wheels→wheel, lights→light, glasses→glass. Good enough to
+// match a plural request against singular labels ("Front Left Wheel").
+function singular( w ) {
+
+	if ( w.endsWith( 'ses' ) || w.endsWith( 'shes' ) || w.endsWith( 'ches' ) ) return w.slice( 0, - 2 );
+	if ( w.endsWith( 's' ) && ! w.endsWith( 'ss' ) ) return w.slice( 0, - 1 );
+	return w;
+
+}
+
+function partNouns( q ) {
+
+	const out = new Set();
+	for ( const w of ( q.tokens || [] ) ) {
+
+		if ( w.length < 3 || PART_STOP.has( w ) ) continue;
+		out.add( w );
+		out.add( singular( w ) );
+
+	}
+	return [ ...out ];
+
+}
+
+// Decoded, lowercased label + node name for a node (what the user calls it).
+function nodeText( n ) {
+
+	const s = ( n.userData && n.userData.label ? n.userData.label + ' ' : '' ) + ( n.name || '' );
+	return decodeName( s ).toLowerCase();
+
+}
+
+/**
+ * Resolve a (possibly plural) part reference to ALL matching meshes.
+ *
+ * @returns {{ nodes: THREE.Object3D[], method: 'label'|'descriptors'|'merged'|'none', query: string, message?: string }}
+ */
+export function findParts( editor, text ) {
+
+	ensureIndexed( editor );
+	const r = matchPartNodes( indexedNodes( editor ), text );
+
+	// Weak result on an imported asset that was never labeled → start labeling now.
+	if ( r.method === 'none' || r.method === 'merged' || r.ambiguous ) {
+
+		if ( ensureLabeled( editor ) ) r.labeling = true;
+
+	}
+	return r;
+
+}
+
+/**
+ * Pure part-matching over already-indexed nodes (no scene traversal / no THREE),
+ * so it is unit-testable. findParts() is this plus index maintenance.
+ *
+ * @param {THREE.Object3D[]} nodes  nodes carrying userData.descriptors / .label
+ * @param {string} text
+ */
+export function matchPartNodes( nodes, text ) {
+
+	const q = parseQuery( text );
+	const nouns = partNouns( q );
+
+	// Merged mesh + a sub-part request → can't isolate parts. Say so (Guard 1).
+	if ( ( looksLikeSubPartQuery( q ) || nouns.length ) && onlyMergedMeshes( nodes ) ) {
+
+		return {
+			nodes: [], method: 'merged', query: text,
+			message: 'This asset is a single merged mesh — its parts can\'t be isolated. I can edit the whole object instead.',
+		};
+
+	}
+
+	// Primary path: match the Stage-4 labels / node names by part noun.
+	if ( nouns.length ) {
+
+		const matched = nodes.filter( n => n.isMesh && nouns.some( t => nodeText( n ).includes( t ) ) );
+		if ( matched.length ) return { nodes: matched, method: 'label', query: text };
+
+	}
+
+	// Fallback: descriptor scoring (shape/region/color). With NO label/name match the
+	// signal is weak (e.g. several blocky meshes tie on "body"), so be CONSERVATIVE:
+	// recoloring the whole shape-tied cluster would repaint most of the asset — exactly
+	// the bug we're guarding against. Return only the single best mesh and flag it as a
+	// guess so the caller can ask the user to name the part (or run relabelAsset).
+	const ranked = scoreCandidates( nodes, q ).filter( r => r.score >= 2 && r.node.isMesh );
+	if ( ranked.length ) {
+
+		const ambiguous = ranked.length > 1 && ranked[ 1 ].score >= ranked[ 0 ].score;
+		return { nodes: [ ranked[ 0 ].node ], method: 'descriptors', ambiguous, query: text };
+
+	}
+
+	return { nodes: [], method: 'none', query: text };
 
 }
 
@@ -208,9 +367,15 @@ export class SceneIntelligence {
 // ── Register query primitives in the op registry (AI-discoverable) ────────────
 
 registerOp( 'findByDescription', {
-	description: 'Resolve a natural-language part reference (e.g. "right arm of the red person") to a scene node using geometry+color+symmetry descriptors. Returns { node, confidence, method, candidates }.',
+	description: 'Resolve a natural-language part reference (e.g. "right arm of the red person") to a SINGLE scene node using geometry+color+symmetry descriptors. Returns { node, confidence, method, candidates }.',
 	params: { text: 'string' },
 	example: 'findByDescription("the red box on the left")',
+} );
+
+registerOp( 'findParts', {
+	description: 'Resolve a PLURAL part reference (e.g. "the wheels", "the tail lights") to ALL matching meshes of an imported asset, using the import-time labels. Use this to edit a SUBSET of parts instead of traversing/recoloring the whole object. Returns { nodes, method }.',
+	params: { text: 'string' },
+	example: 'findParts("the wheels")',
 } );
 
 registerOp( 'describeObject', {

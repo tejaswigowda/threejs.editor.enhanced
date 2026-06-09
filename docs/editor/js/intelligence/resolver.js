@@ -7,6 +7,9 @@
 // Never silently wrong: returns confidence and ranked candidates; ambiguous
 // queries surface candidates rather than guessing.
 
+import { decodeName } from '../scene/summarize.js';
+import { isMeaningfulName } from '../import/diagnostics.js';
+
 // ── Query parsing ─────────────────────────────────────────────────────────────
 
 const COLOR_WORDS = [ 'red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan',
@@ -32,12 +35,18 @@ const SIZE_WORDS = {
 	smallest: 'smallest', tiniest: 'smallest', littlest: 'smallest',
 };
 
+// Words that carry no part-identity (stripped before matching cached labels).
+const LABEL_STOP = new Set( [ 'the', 'and', 'make', 'turn', 'set', 'change', 'this',
+	'that', 'these', 'those', 'with', 'into', 'for', 'all', 'both', 'two', 'part', 'parts',
+	'red', 'orange', 'yellow', 'lime', 'green', 'teal', 'cyan', 'blue', 'purple', 'magenta',
+	'pink', 'brown', 'gray', 'grey', 'black', 'white', 'bigger', 'smaller', 'color', 'colour' ] );
+
 export function parseQuery( text ) {
 
 	const t = String( text ).toLowerCase();
 	const words = t.split( /[^a-z0-9]+/ ).filter( Boolean );
 
-	const q = { colors: [], regions: [], shapes: [], size: null, pair: false, raw: t };
+	const q = { colors: [], regions: [], shapes: [], size: null, pair: false, tokens: words, raw: t };
 
 	for ( const w of words ) {
 
@@ -99,6 +108,44 @@ export function scoreCandidates( nodes, q ) {
 		let score = 0;
 		const reasons = [];
 
+		// Stage-4 LLM label match — the import labeling pass cached human nouns in
+		// userData.label ("Dump Bed", "Tail Light (right)"). This is what makes an
+		// opaque Object_N asset addressable: "make the dump bed red" matches here.
+		const label = node.userData.label;
+		if ( label && q.tokens.length ) {
+
+			const ll = String( label ).toLowerCase();
+			let hits = 0;
+			for ( const w of q.tokens ) {
+
+				if ( w.length < 3 || LABEL_STOP.has( w ) ) continue;
+				if ( ll.includes( w ) ) hits ++;
+
+			}
+
+			if ( hits > 0 ) { score += 4 * hits; reasons.push( 'label:' + label ); }
+
+		}
+
+		// Meaningful original-name match — many GLBs name a mesh "Body", "Cab",
+		// "Wheel_FL". Gated by isMeaningfulName so exporter placeholders (Object_7,
+		// mesh_0) add no noise. Weaker than an LLM label, stronger than shape alone.
+		const rawName = node.name;
+		if ( rawName && q.tokens.length && isMeaningfulName( rawName ) ) {
+
+			const nn = decodeName( rawName ).toLowerCase();
+			let hits = 0;
+			for ( const w of q.tokens ) {
+
+				if ( w.length < 3 || LABEL_STOP.has( w ) ) continue;
+				if ( nn.includes( w ) ) hits ++;
+
+			}
+
+			if ( hits > 0 ) { score += 3 * hits; reasons.push( 'name:' + decodeName( rawName ) ); }
+
+		}
+
 		// Color
 		if ( q.colors.length && d.color ) {
 
@@ -136,7 +183,14 @@ export function scoreCandidates( nodes, q ) {
 	}
 
 	ranked.sort( ( a, b ) => b.score - a.score );
-	return ranked;
+
+	// A part reference ("truck body", "the panel") names a RENDERABLE part. When
+	// any mesh matched, drop structural wrapper groups (the .glb root,
+	// "Sketchfab_model", merge containers) from the result: they represent the
+	// WHOLE asset and tie on shape:blocky, and a material edit on a Group is a
+	// silent no-op. Color-group queries already narrow the pool to meshes upstream.
+	const meshHits = ranked.filter( r => r.node.isMesh );
+	return meshHits.length ? meshHits : ranked;
 
 }
 
@@ -152,6 +206,7 @@ function descriptorLine( id, node ) {
 	const d = node.userData.descriptors;
 	if ( ! d ) return `${ id }  (no descriptors)`;
 	const bits = [ d.role ];
+	if ( node.userData.label ) bits.push( `"${ node.userData.label }"` );
 	if ( d.color ) bits.push( d.color.base );
 	if ( d.shape ) bits.push( d.shape );
 	if ( d.orientation ) bits.push( d.orientation );

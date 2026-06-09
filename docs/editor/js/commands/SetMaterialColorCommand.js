@@ -1,4 +1,5 @@
 import { Command } from '../Command.js';
+import { colorEditGuard } from '../intelligence/editGuards.js';
 
 // True if any OTHER object in the scene references this exact material instance.
 function materialSharedByOthers( editor, exceptObject, material ) {
@@ -76,6 +77,18 @@ class SetMaterialColorCommand extends Command {
 		}
 
 		material[ this.attributeName ].setHex( this.newValue );
+
+		// Guard 3 (map vs color): on a textured material, setting .color only TINTS
+		// (map × color) — the command "succeeds" but the visible color won't match
+		// intent (the gothic-bed bug). Surface it once, don't silently mislead.
+		if ( this.attributeName === 'color' && ! this._guardWarned && colorEditGuard( material ) ) {
+
+			this._guardWarned = true;
+			const msg = '⚠ ' + colorEditGuard( material ).message;
+			if ( typeof this.editor.importLog === 'function' ) this.editor.importLog( msg );
+			else if ( typeof console !== 'undefined' ) console.warn( msg );
+
+		}
 
 		this.editor.signals.materialChanged.dispatch( this.object, this.materialSlot );
 

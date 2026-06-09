@@ -79,10 +79,11 @@ export const ALLOWED_CLASSES = new Set();
 // classes). Used by validate.js (B3) to tell a real global from an invented
 // helper like backWall(). Op-registry names are merged in at buildIndex().
 export const SCOPE_FUNCTIONS = new Set( [
-	'findObject', 'findAll', 'findOfType', 'findNear', 'findByDescription',
+	'findObject', 'findAll', 'findOfType', 'findNear', 'findByDescription', 'findParts',
 	'whatsVisible', 'whatsAt', 'findAPI', 'getSize', 'getTopY', 'getCenter', 'placeOnTop',
 	'makeTexture', 'makeCheckerTex', 'makeGridTex', 'lineFromPoints', 'makeChair', 'makeTable', 'fetchAPI', 'summarize', 'describeObject',
 	'listCandidates', 'resolvePartAI', 'askScene', 'colorToName', 'evalAI',
+	'diagnoseImport', 'relabelAsset',
 	'enterEditMode', 'exitEditMode', 'extrude', 'inset', 'bevel', 'deleteFaces', 'weld', 'planarUV', 'boxUV',
 	'booleanUnion', 'booleanSubtract', 'booleanIntersect', 'mirrorMesh', 'arrayDuplicate', 'subdivide',
 	'objectToJS', 'sceneToJS', 'sceneEqual', 'showJS',

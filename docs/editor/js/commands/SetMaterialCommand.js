@@ -1,5 +1,6 @@
 import { Command } from '../Command.js';
 import { ObjectLoader } from 'three';
+import { materialHasMap } from '../intelligence/editGuards.js';
 
 class SetMaterialCommand extends Command {
 
@@ -28,6 +29,17 @@ class SetMaterialCommand extends Command {
 	execute() {
 
 		this.editor.setObjectMaterial( this.object, this.materialSlot, this.newMaterial );
+
+		// Guard 4 (edit conflict): replacing a material discards what it carried.
+		// Most often relevant when the old material was textured — flag that the
+		// texture is being dropped so a solid recolor isn't a silent surprise.
+		if ( ! this._guardWarned && materialHasMap( this.oldMaterial ) && ! materialHasMap( this.newMaterial ) ) {
+
+			this._guardWarned = true;
+			const msg = 'ℹ Replaced a textured material — its texture map was dropped (now a solid color). Undo to restore it.';
+			if ( typeof this.editor.importLog === 'function' ) this.editor.importLog( msg );
+
+		}
 
 		this.editor.signals.materialChanged.dispatch( this.object, this.materialSlot );
 

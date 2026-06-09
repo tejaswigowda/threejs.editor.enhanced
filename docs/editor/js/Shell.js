@@ -26,6 +26,9 @@ import { deleteFaces } from './mesh/ops/delete.js';
 import { weld }        from './mesh/ops/weld.js';
 import { planarUV, boxUV } from './mesh/ops/uv.js';
 import { SceneIntelligence, findByDescription, describeObject, listCandidates, resolvePartAI } from './intelligence/sceneIndex.js';
+import { findParts } from './intelligence/sceneIndex.js';
+import { diagnoseImport, diagnosticMessages } from './import/diagnostics.js';
+import { labelImportedAsset } from './import/labelPass.js';
 import { colorToName } from './intelligence/colorName.js';
 import { whatsVisible, whatsAt } from './intelligence/gpuPick.js';
 import { snapshotScene, sceneDiff, confirmChange, diffSummary, inspectScene } from './intelligence/observe.js';
@@ -254,6 +257,9 @@ function Shell( editor ) {
 
 	// Scene intelligence — derives descriptors on import, resolves NL part queries
 	editor.sceneIntelligence = new SceneIntelligence( editor );
+
+	// Route asset-import pipeline messages (normalize / diagnose / label) to the shell.
+	editor.importLog = ( msg ) => appendOutput( msg, 'info' );
 
 	// Build the local API index (Technique 2 RAG) so generation references real signatures
 	buildIndex();
@@ -595,6 +601,7 @@ function Shell( editor ) {
 
 					const r = findByDescription( editor, text );
 
+					if ( r.labeling ) { appendOutput( '🏷 No part labels yet — labeling this asset now. Re-run your command in a few seconds.', 'info' ); return null; }
 					if ( r.method === 'merged' ) { appendOutput( 'ℹ ' + r.message, 'info' ); return null; }
 					if ( r.method === 'none' )   { appendOutput( 'ℹ No node matched: "' + text + '"', 'info' ); return null; }
 
@@ -616,6 +623,35 @@ function Shell( editor ) {
 
 				// resolvePartAI(text) — async Path A + LLM disambiguation → {node, confidence, method}
 				resolvePartAI: ( text ) => resolvePartAI( editor, text ),
+
+				// findParts(text) — PLURAL part resolution → ARRAY of meshes for a
+				// subset of an imported asset ("the wheels"). Use this to edit only the
+				// named parts instead of traversing/recoloring the whole object.
+				findParts: function ( text ) {
+
+					const r = findParts( editor, text );
+					if ( r.labeling ) { appendOutput( '🏷 No part labels yet — labeling this asset now. Re-run your command in a few seconds.', 'info' ); return []; }
+					if ( r.method === 'merged' ) { appendOutput( 'ℹ ' + r.message, 'info' ); return []; }
+					if ( r.nodes.length === 0 ) { appendOutput( 'ℹ No parts matched: "' + text + '"', 'info' ); return []; }
+					if ( r.method === 'descriptors' && r.ambiguous ) { appendOutput( '⚠ No labels for this asset — best-guessing one part for "' + text + '".', 'info' ); }
+					return r.nodes;
+
+				},
+
+				// diagnoseImport(obj) — structural facts about an imported asset
+				// (merged-mesh? opaque names? textured?), with safe user-facing notes.
+				diagnoseImport: function ( obj ) {
+
+					const root = obj ?? editor.selected;
+					if ( ! root ) { appendOutput( 'ℹ Select or pass an imported object.', 'info' ); return null; }
+					const d = diagnoseImport( root );
+					for ( const m of diagnosticMessages( d, root.name || 'asset' ) ) appendOutput( 'ℹ ' + m, 'info' );
+					return d;
+
+				},
+
+				// relabelAsset(obj) — re-run the LLM labeling pass (Stage 4) on demand.
+				relabelAsset: ( obj ) => labelImportedAsset( editor, obj ?? editor.selected, { force: true } ),
 
 				// ── Agentic grounding tools (no vision model) ─────────────────────────
 				// findAPI(text) — retrieve REAL API signatures (anti-hallucination)
