@@ -81,7 +81,7 @@ export const ALLOWED_CLASSES = new Set();
 export const SCOPE_FUNCTIONS = new Set( [
 	'findObject', 'findAll', 'findOfType', 'findNear', 'findByDescription',
 	'whatsVisible', 'whatsAt', 'findAPI', 'getSize', 'getTopY', 'getCenter', 'placeOnTop',
-	'makeTexture', 'makeCheckerTex', 'makeGridTex', 'lineFromPoints', 'fetchAPI', 'summarize', 'describeObject',
+	'makeTexture', 'makeCheckerTex', 'makeGridTex', 'lineFromPoints', 'makeChair', 'makeTable', 'fetchAPI', 'summarize', 'describeObject',
 	'listCandidates', 'resolvePartAI', 'askScene', 'colorToName', 'evalAI',
 	'enterEditMode', 'exitEditMode', 'extrude', 'inset', 'bevel', 'deleteFaces', 'weld', 'planarUV', 'boxUV',
 	'booleanUnion', 'booleanSubtract', 'booleanIntersect', 'mirrorMesh', 'arrayDuplicate', 'subdivide',

@@ -119,6 +119,73 @@ async function handleApiModels(res) {
   res.end(JSON.stringify({ models, devMode: DEV }, null, 2));
 }
 
+// ── SSE streaming helpers (cloud token-by-token, like local WebLLM) ──────────
+function sseInit(res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+}
+function sseSend(res, obj) { res.write(`data: ${JSON.stringify(obj)}\n\n`); }
+function sseDone(res) { res.write('data: [DONE]\n\n'); res.end(); }
+
+// Read an upstream provider response body line-by-line and forward each parsed
+// delta to the client as a unified `data: {"delta":"…"}` SSE event.
+async function relayProviderStream(res, upstream, onLine) {
+  sseInit(res);
+  const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
+        onLine(line, res);
+      }
+    }
+    if (buf.trim()) onLine(buf, res);
+  } catch (e) {
+    console.error('[Stream Error]', e.message);
+    sseSend(res, { error: 'stream interrupted' });
+  }
+  sseDone(res);
+}
+
+// Per-provider line → delta extractor. Ollama emits NDJSON; OpenAI and Claude
+// emit SSE `data:` lines (OpenAI: choices[].delta.content; Claude:
+// content_block_delta.delta.text).
+function providerLineHandler(kind) {
+  return (rawLine, res) => {
+    const line = rawLine.replace(/\r$/, '');
+    if (!line) return;
+    if (kind === 'ollama') {
+      let o; try { o = JSON.parse(line); } catch { return; }
+      const d = o.message?.content || '';
+      if (d) sseSend(res, { delta: d });
+      return;
+    }
+    if (!line.startsWith('data:')) return;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === '[DONE]') return;
+    let o; try { o = JSON.parse(payload); } catch { return; }
+    if (kind === 'openai') {
+      const d = o.choices?.[0]?.delta?.content || '';
+      if (d) sseSend(res, { delta: d });
+    } else if (kind === 'claude') {
+      if (o.type === 'content_block_delta') {
+        const d = o.delta?.text || '';
+        if (d) sseSend(res, { delta: d });
+      }
+    }
+  };
+}
+
 async function handleApiChat(req, res) {
   setSecurityHeaders(res);
 
@@ -156,6 +223,7 @@ async function handleApiChat(req, res) {
     try {
       const payload = JSON.parse(body);
       const { model, messages, temperature = 0.7, max_tokens = 2000 } = payload;
+      const wantStream = payload.stream === true;
 
       // Validate model parameter
       if (!model || typeof model !== 'string') {
@@ -174,6 +242,30 @@ async function handleApiChat(req, res) {
       // Route to appropriate API
       if (model.startsWith('ollama:')) {
         const modelName = model.slice(7);
+
+        if (wantStream) {
+          let upstream;
+          try {
+            upstream = await fetch('http://127.0.0.1:11434/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: modelName, messages, stream: true })
+            });
+          } catch (e) {
+            console.error('[Ollama Error]', e.message);
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Ollama service error' }));
+            return;
+          }
+          if (!upstream.ok) {
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Ollama service error' }));
+            return;
+          }
+          await relayProviderStream(res, upstream, providerLineHandler('ollama'));
+          return;
+        }
+
         try {
           const ollamaRes = await fetch('http://127.0.0.1:11434/api/chat', {
             method: 'POST',
@@ -194,6 +286,34 @@ async function handleApiChat(req, res) {
         if (!process.env.OPENAI_API_KEY) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'OpenAI not configured' }));
+          return;
+        }
+
+        if (wantStream) {
+          let upstream;
+          try {
+            upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+              },
+              body: JSON.stringify({ model, messages, temperature, max_tokens, stream: true })
+            });
+          } catch (e) {
+            console.error('[OpenAI Error]', e.message);
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'OpenAI service error' }));
+            return;
+          }
+          if (!upstream.ok) {
+            console.error('[OpenAI Error]', upstream.status);
+            const statusErr = { 401: 'Authentication failed', 429: 'Rate limited', 500: 'Service error' }[upstream.status] || 'API error';
+            res.writeHead(upstream.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: statusErr }));
+            return;
+          }
+          await relayProviderStream(res, upstream, providerLineHandler('openai'));
           return;
         }
 
@@ -269,6 +389,43 @@ async function handleApiChat(req, res) {
           }
 
           console.log('[Claude Request]', JSON.stringify({ model, messageCount: claudeMessages.length, maxTokens: max_tokens, hasSystem: !!systemPrompt }));
+
+          if (wantStream) {
+            const streamBody = { ...requestBody, stream: true };
+            let upstream;
+            const maxStreamRetries = 5;
+            for (let attempt = 0; attempt <= maxStreamRetries; attempt++) {
+              upstream = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                  'x-api-key': process.env.ANTHROPIC_API_KEY,
+                  'anthropic-version': '2023-06-01',
+                  'content-type': 'application/json'
+                },
+                body: JSON.stringify(streamBody)
+              });
+              if (upstream.status !== 429 || attempt === maxStreamRetries) break;
+              const retryAfter = parseFloat(upstream.headers.get('retry-after'));
+              const waitMs = Number.isFinite(retryAfter)
+                ? Math.ceil(retryAfter * 1000)
+                : Math.min(2000 * Math.pow(2, attempt), 30000);
+              console.warn(`[Claude 429] rate limited (stream), retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxStreamRetries})`);
+              await new Promise(r => setTimeout(r, waitMs));
+            }
+            if (!upstream.ok) {
+              const errData = await upstream.json().catch(() => ({}));
+              console.error('[Claude Error]', upstream.status, 'Model:', model, 'Error:', errData.error || errData);
+              const statusErr = { 401: 'Authentication failed', 404: 'Model not found', 429: 'Rate limited', 500: 'Service error' }[upstream.status] || 'API error';
+              const headers = { 'Content-Type': 'application/json' };
+              const retryAfter = upstream.headers.get('retry-after');
+              if (upstream.status === 429 && retryAfter) headers['Retry-After'] = retryAfter;
+              res.writeHead(upstream.status, headers);
+              res.end(JSON.stringify({ error: statusErr }));
+              return;
+            }
+            await relayProviderStream(res, upstream, providerLineHandler('claude'));
+            return;
+          }
 
           // Retry on 429 (rate limit) with backoff, respecting retry-after header.
           let claudeRes;

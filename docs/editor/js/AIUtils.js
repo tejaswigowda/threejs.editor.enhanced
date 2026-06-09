@@ -55,10 +55,28 @@ function extractIIFE( s ) {
 
 }
 
+// Models frequently emit "smart"/Unicode look-alikes for plain ASCII operators
+// and whitespace (e.g. the U+2212 MINUS SIGN in `position.set(0,1,−3.5)`), which
+// the JS engine rejects as "Invalid or unexpected token". Fold the unambiguous
+// offenders back to ASCII so an otherwise-correct generation isn't wasted on a
+// retry. Only characters that are never valid JS tokens (and not meaningful as
+// literal text in editor code) are converted.
+export function normalizeCodeChars( text ) {
+
+	return String( text )
+		// Minus-sign / non-ASCII hyphen look-alikes → ASCII hyphen-minus.
+		.replace( /[\u2212\u2010\u2011]/g, '-' )
+		// Unicode spaces (incl. NBSP) → regular space.
+		.replace( /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ' )
+		// Zero-width and BOM → removed.
+		.replace( /[\u200B\u200C\u200D\uFEFF]/g, '' );
+
+}
+
 export function extractCode( text ) {
 
 	if ( ! text ) return '';
-	const raw = String( text );
+	const raw = normalizeCodeChars( String( text ) );
 
 	// 1. Prefer the FIRST complete fenced block; discard everything outside it.
 	const fenceRe = /```[ \t]*[a-zA-Z]*[ \t]*\r?\n?([\s\S]*?)```/g;

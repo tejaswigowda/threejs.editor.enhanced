@@ -147,3 +147,174 @@ export function confirmChange( diff, intent ) {
 	};
 
 }
+
+// ── Tier-2 geometric verify → repair (Technique 3d) ─────────────────────────────
+// The executed scene is GROUND TRUTH. After a generation runs, measure the REAL
+// world geometry of the objects it added and surface high-confidence physical
+// defects (below ground / interpenetration / floating) so the loop can feed exact
+// numbers back for ONE corrective pass. This catches structurally-wrong-but-
+// non-empty results that diff-based observation (did anything change?) accepts.
+//
+// World-space — not the snapshot's LOCAL pos — so nested/grouped/rotated parts are
+// measured where they actually are. No THREE dependency: the 8 geometry-box
+// corners are pushed through obj.matrixWorld by hand.
+
+// Transform a local point by a column-major Matrix4 elements array.
+function applyMat4( e, x, y, z ) {
+
+	const w = ( e[ 3 ] * x + e[ 7 ] * y + e[ 11 ] * z + e[ 15 ] ) || 1;
+	return [
+		( e[ 0 ] * x + e[ 4 ] * y + e[ 8 ]  * z + e[ 12 ] ) / w,
+		( e[ 1 ] * x + e[ 5 ] * y + e[ 9 ]  * z + e[ 13 ] ) / w,
+		( e[ 2 ] * x + e[ 6 ] * y + e[ 10 ] * z + e[ 14 ] ) / w,
+	];
+
+}
+
+// World axis-aligned bounding box of a mesh (accounts for the full parent chain
+// AND rotation). { min:[x,y,z], max:[x,y,z] } or null for geometry-less objects.
+function worldAABB( obj ) {
+
+	const g = obj.geometry;
+	if ( ! g ) return null;
+	if ( ! g.boundingBox ) g.computeBoundingBox();
+	const bb = g.boundingBox;
+	if ( ! bb ) return null;
+
+	obj.updateWorldMatrix( true, false );
+	const e = obj.matrixWorld.elements;
+	const min = [ Infinity, Infinity, Infinity ];
+	const max = [ - Infinity, - Infinity, - Infinity ];
+
+	for ( const x of [ bb.min.x, bb.max.x ] )
+		for ( const y of [ bb.min.y, bb.max.y ] )
+			for ( const z of [ bb.min.z, bb.max.z ] ) {
+
+				const p = applyMat4( e, x, y, z );
+				for ( let k = 0; k < 3; k ++ ) {
+
+					if ( p[ k ] < min[ k ] ) min[ k ] = p[ k ];
+					if ( p[ k ] > max[ k ] ) max[ k ] = p[ k ];
+
+				}
+
+			}
+
+	return { min, max };
+
+}
+
+function aabbSize( box ) { return [ box.max[ 0 ] - box.min[ 0 ], box.max[ 1 ] - box.min[ 1 ], box.max[ 2 ] - box.min[ 2 ] ]; }
+function aabbVol( s ) { return Math.max( 1e-6, s[ 0 ] ) * Math.max( 1e-6, s[ 1 ] ) * Math.max( 1e-6, s[ 2 ] ); }
+function aabbFlat( s ) { const d = s.map( Math.abs ); return Math.min( ...d ) / Math.max( ...d, 1e-6 ); }
+
+function overlapVol( A, B ) {
+
+	let v = 1;
+	for ( let k = 0; k < 3; k ++ ) v *= Math.max( 0, Math.min( A.max[ k ], B.max[ k ] ) - Math.max( A.min[ k ], B.min[ k ] ) );
+	return v;
+
+}
+
+// Does some OTHER mesh sit beneath `m` (XZ footprints overlap and its top reaches
+// m's base within tol)? i.e. is there something to rest on.
+function hasSupportBelow( m, all, tol ) {
+
+	for ( const o of all ) {
+
+		if ( o.uuid === m.uuid ) continue;
+		const xOv = Math.min( m.box.max[ 0 ], o.box.max[ 0 ] ) - Math.max( m.box.min[ 0 ], o.box.min[ 0 ] );
+		const zOv = Math.min( m.box.max[ 2 ], o.box.max[ 2 ] ) - Math.max( m.box.min[ 2 ], o.box.min[ 2 ] );
+		if ( xOv <= 0 || zOv <= 0 ) continue;
+		// o's top reaches up to (or through) m's base, and o is not entirely above m.
+		if ( o.box.max[ 1 ] >= m.box.min[ 1 ] - tol && o.box.min[ 1 ] <= m.box.max[ 1 ] ) return true;
+
+	}
+	return false;
+
+}
+
+/**
+ * Inspect the objects added between `before` and `after` for physical defects.
+ * Pure read of the live scene (no mutation). Returns { ok, issues:[string] }.
+ *
+ * @param {Editor} editor
+ * @param {Map} before  uuid → snapshot (pre-execution)
+ * @param {Map} after   uuid → snapshot (post-execution)
+ */
+export function inspectScene( editor, before, after ) {
+
+	const GROUND = - 0.25; // tolerance below y=0 before "sunk"
+	const FLOAT  = 0.4;    // base height above which "resting on the ground" no longer applies
+	const TOL    = 0.15;   // contact tolerance for support
+
+	// Live meshes added this attempt (new uuids with own geometry — skip groups/lights).
+	const uuidToObj = new Map();
+	editor.scene.traverse( o => uuidToObj.set( o.uuid, o ) );
+
+	const added = [];
+	for ( const uuid of after.keys() ) {
+
+		if ( before.has( uuid ) ) continue;
+		const obj = uuidToObj.get( uuid );
+		if ( ! obj || ! obj.geometry ) continue;
+		const box = worldAABB( obj );
+		if ( ! box ) continue;
+		added.push( { uuid, name: obj.name || obj.type, box, size: aabbSize( box ) } );
+
+	}
+	if ( added.length === 0 ) return { ok: true, issues: [] };
+
+	// All meshes (added + pre-existing) for support context.
+	const all = [];
+	editor.scene.traverse( o => {
+
+		if ( ! o.geometry ) return;
+		const box = worldAABB( o );
+		if ( box ) all.push( { uuid: o.uuid, name: o.name || o.type, box } );
+
+	} );
+
+	const issues = [];
+
+	// 1. Below ground — the most common, highest-confidence defect.
+	for ( const m of added ) {
+
+		if ( m.box.min[ 1 ] < GROUND )
+			issues.push( `"${ m.name }" sinks below the ground: its lowest point is y=${ m.box.min[ 1 ].toFixed( 2 ) } (ground is y=0). Raise it so its base sits at or above y=0.` );
+
+	}
+
+	// 2. Interpenetration — two comparably-sized BLOCKY added meshes deeply
+	//    overlapping (one buried in the other). Thin overlays/details are exempt.
+	for ( let a = 0; a < added.length; a ++ ) {
+
+		for ( let b = a + 1; b < added.length; b ++ ) {
+
+			const A = added[ a ], B = added[ b ];
+			const ov = overlapVol( A.box, B.box );
+			if ( ov <= 0 ) continue;
+			const vA = aabbVol( A.size ), vB = aabbVol( B.size );
+			const buried = ov / Math.min( vA, vB );
+			const ratio  = Math.min( vA, vB ) / Math.max( vA, vB );
+			const flat   = aabbFlat( vA <= vB ? A.size : B.size );
+			if ( buried > 0.5 && ratio > 0.25 && flat >= 0.2 )
+				issues.push( `"${ A.name }" and "${ B.name }" occupy the same space (one is buried inside the other). Move them apart so they only meet at their surfaces.` );
+
+		}
+
+	}
+
+	// 3. Floating — an added mesh clearly off the ground with nothing beneath it.
+	for ( const m of added ) {
+
+		if ( m.box.min[ 1 ] <= FLOAT ) continue;          // resting on/near the ground
+		if ( hasSupportBelow( m, all, TOL ) ) continue;   // standing on another object
+		issues.push( `"${ m.name }" floats in mid-air: its base is at y=${ m.box.min[ 1 ].toFixed( 2 ) } with nothing beneath it. Rest it on the ground or on top of a supporting object.` );
+
+	}
+
+	return { ok: issues.length === 0, issues };
+
+}
+

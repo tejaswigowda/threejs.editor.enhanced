@@ -202,7 +202,7 @@ function diagnoseNoEffect( code, reason ) {
 
 export async function runAgentic( { editor, messages, intent, deps, maxRetries = DEFAULT_MAX_RETRIES, shouldAbort, tokenBudget = DEFAULT_TOKEN_BUDGET } ) {
 
-	const { streamCode, execute, appendOutput, validateCode, snapshotScene, sceneDiff, confirmChange, diffSummary } = deps;
+	const { streamCode, execute, appendOutput, validateCode, snapshotScene, sceneDiff, confirmChange, diffSummary, inspectScene, historyLen, rollbackTo } = deps;
 
 	const aborted = () => typeof shouldAbort === 'function' && shouldAbort();
 
@@ -212,6 +212,11 @@ export async function runAgentic( { editor, messages, intent, deps, maxRetries =
 
 	// Most-recent failed attempt only: { code, error }. null on the first pass.
 	let lastFail = null;
+
+	// Tier-2 geometric repair is capped to a SINGLE corrective pass: placement is
+	// the planning ceiling, so retrying a spatial defect more than once risks a
+	// churn loop that ends worse than the first try. One measured nudge, then accept.
+	let spatialRepaired = false;
 
 	for ( let attempt = 0; attempt <= maxRetries; attempt ++ ) {
 
@@ -293,6 +298,9 @@ export async function runAgentic( { editor, messages, intent, deps, maxRetries =
 
 		// ── 2. Execute (undo stack) with before/after observation ────────────
 		const before = snapshotScene( editor );
+		// Checkpoint the undo stack so a Tier-2 spatial defect can roll THIS attempt
+		// back before the corrected (full-scene) retry runs, avoiding duplicate objects.
+		const checkpoint = typeof historyLen === 'function' ? historyLen() : null;
 		const result = execute( code );
 
 		if ( ! result.ok ) {
@@ -335,6 +343,31 @@ export async function runAgentic( { editor, messages, intent, deps, maxRetries =
 
 				appendOutput( `⟳ colors collapsed to ${ distinct } (asked ${ wantColors }) — retrying (${ attempt + 1 }/${ maxRetries })…`, 'info' );
 				lastFail = { code, error: 'you recolored multiple objects but they SHARE one material, so all show the same color. Give each its OWN material (new Material per mesh) before setting colors, then set each distinct color.' };
+				continue;
+
+			}
+
+		}
+
+		// ── 3b. Geometric verify → repair (Tier-2) ──────────────────────
+		// The executed scene is GROUND TRUTH. Measure the REAL world geometry of the
+		// objects this attempt added; on a high-confidence physical defect (below
+		// ground / interpenetration / floating), roll the attempt back and feed exact
+		// measurements in for ONE corrective pass. Capped (spatialRepaired) so a
+		// planning-ceiling limitation can't spiral into a retry storm.
+		if ( ! spatialRepaired && typeof inspectScene === 'function' && attempt < maxRetries ) {
+
+			const insp = inspectScene( editor, before, after );
+			if ( insp && ! insp.ok && insp.issues.length ) {
+
+				spatialRepaired = true;
+				appendOutput( '⟳ spatial check: ' + insp.issues.map( oneLine ).join( '  |  ' ) +
+					` — retrying (${ attempt + 1 }/${ maxRetries })…`, 'info' );
+
+				// Undo this attempt so the corrected full-scene retry doesn't stack on it.
+				if ( typeof rollbackTo === 'function' && checkpoint !== null ) rollbackTo( checkpoint );
+
+				lastFail = { code, error: 'spatial problems — ' + insp.issues.join( ' ' ) };
 				continue;
 
 			}

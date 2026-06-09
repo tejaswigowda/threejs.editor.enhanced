@@ -109,16 +109,33 @@ function SidebarProjectRenderer( editor ) {
 		const rendererType = rendererTypeSelect.getValue();
 		const antialias = antialiasBoolean.getValue();
 
-		if ( rendererType === 'WebGPURenderer' ) {
+		let newRenderer = null;
 
-			currentRenderer = new WebGPURenderer( { antialias: antialias, logarithmicDepthBuffer: true } );
-			await currentRenderer.init();
+		try {
 
-		} else {
+			if ( rendererType === 'WebGPURenderer' ) {
 
-			currentRenderer = new THREE.WebGLRenderer( { antialias: antialias, logarithmicDepthBuffer: true } );
+				newRenderer = new WebGPURenderer( { antialias: antialias, logarithmicDepthBuffer: true } );
+				await newRenderer.init();
+
+			} else {
+
+				newRenderer = new THREE.WebGLRenderer( { antialias: antialias, logarithmicDepthBuffer: true } );
+
+			}
+
+		} catch ( error ) {
+
+			console.error( error );
+			showRendererError( rendererType, error );
+			if ( newRenderer && typeof newRenderer.dispose === 'function' ) newRenderer.dispose();
+			return;
 
 		}
+
+		hideRendererError();
+
+		currentRenderer = newRenderer;
 
 		currentRenderer.shadowMap.enabled = shadowsBoolean.getValue();
 		currentRenderer.shadowMap.type = parseFloat( shadowTypeSelect.getValue() );
@@ -127,6 +144,68 @@ function SidebarProjectRenderer( editor ) {
 
 		signals.rendererCreated.dispatch( currentRenderer );
 		signals.rendererUpdated.dispatch();
+
+	}
+
+	// Graceful fallback when a GPU context can't be created (e.g. Linux/Chrome
+	// software rendering with llvmpipe/SwiftShader, or a blocklisted GPU). Without
+	// this the WebGLRenderer constructor throws and the editor renders a blank page.
+
+	function showRendererError( rendererType, error ) {
+
+		let overlay = document.getElementById( 'webgl-error-overlay' );
+
+		if ( overlay === null ) {
+
+			overlay = document.createElement( 'div' );
+			overlay.id = 'webgl-error-overlay';
+			overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;' +
+				'align-items:center;justify-content:center;background:#191919;color:#d6d6d6;' +
+				'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;' +
+				'padding:24px;box-sizing:border-box;';
+			document.body.appendChild( overlay );
+
+		}
+
+		const isWebGPU = rendererType === 'WebGPURenderer';
+		const api = isWebGPU ? 'WebGPU' : 'WebGL';
+		const message = ( error && error.message ) ? String( error.message ) : String( error );
+
+		overlay.innerHTML =
+			'<div style="max-width:560px;line-height:1.55;">' +
+				'<h2 style="margin:0 0 12px;font-size:18px;color:#fff;">Could not start the 3D view</h2>' +
+				'<p style="margin:0 0 12px;">Your browser was unable to create a <strong>' + api + '</strong> ' +
+				'context, so the editor can\u2019t render. This usually means hardware ' +
+				'acceleration is disabled or the GPU is being emulated in software ' +
+				'(e.g. <code>llvmpipe</code> / SwiftShader on Linux).</p>' +
+				'<p style="margin:0 0 8px;">Try one of the following, then reload:</p>' +
+				'<ul style="margin:0 0 14px;padding-left:20px;">' +
+					'<li>Enable <em>Use hardware acceleration when available</em> in your browser settings and restart it.</li>' +
+					'<li>Confirm WebGL works at <a href="https://get.webgl.org/" style="color:#4ea1ff;" target="_blank" rel="noopener">get.webgl.org</a>.</li>' +
+					'<li>On Linux, update your GPU drivers, or launch Chrome with ' +
+						'<code>--enable-unsafe-swiftshader</code> (software fallback) or ' +
+						'<code>--use-gl=angle --use-angle=gl</code>.</li>' +
+					( isWebGPU ? '<li>Switch the renderer back to <strong>WebGL</strong> in Project \u203A Renderer.</li>' : '' ) +
+				'</ul>' +
+				'<button id="webgl-error-reload" style="margin-right:8px;padding:6px 14px;' +
+					'background:#2a82da;color:#fff;border:none;border-radius:4px;cursor:pointer;">Reload</button>' +
+				'<details style="margin-top:14px;color:#9a9a9a;">' +
+					'<summary style="cursor:pointer;">Technical details</summary>' +
+					'<pre style="white-space:pre-wrap;word-break:break-word;margin:8px 0 0;font-size:12px;">' +
+						message.replace( /[<>&]/g, c => ( { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ c ] ) ) +
+					'</pre>' +
+				'</details>' +
+			'</div>';
+
+		const reloadButton = document.getElementById( 'webgl-error-reload' );
+		if ( reloadButton !== null ) reloadButton.onclick = () => location.reload();
+
+	}
+
+	function hideRendererError() {
+
+		const overlay = document.getElementById( 'webgl-error-overlay' );
+		if ( overlay !== null ) overlay.remove();
 
 	}
 

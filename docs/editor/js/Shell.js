@@ -28,7 +28,7 @@ import { planarUV, boxUV } from './mesh/ops/uv.js';
 import { SceneIntelligence, findByDescription, describeObject, listCandidates, resolvePartAI } from './intelligence/sceneIndex.js';
 import { colorToName } from './intelligence/colorName.js';
 import { whatsVisible, whatsAt } from './intelligence/gpuPick.js';
-import { snapshotScene, sceneDiff, confirmChange, diffSummary } from './intelligence/observe.js';
+import { snapshotScene, sceneDiff, confirmChange, diffSummary, inspectScene } from './intelligence/observe.js';
 import { buildIndex, retrieveForPrompt, findAPI } from './ai/apiIndex.js';
 import { validateCode } from './ai/validate.js';
 import { runAgentic } from './ai/agentLoop.js';
@@ -737,6 +737,116 @@ function Shell( editor ) {
 
 				},
 
+				// makeTable(opts) → a complete, legged table Group (top + 4 corner legs),
+				// correctly proportioned. Returns the Group (unadded) — add it with
+				// AddObjectCommand. Hand-building furniture keeps dropping the legs; this
+				// is the blessed path. opts: { position:[x,y,z]|Vector3, width=3, depth=2,
+				// height=0.75, topColor, legColor, name }.
+				makeTable: function ( opts = {} ) {
+
+					const T = window.THREE;
+					const w = opts.width ?? 3, d = opts.depth ?? 2, h = opts.height ?? 0.75;
+					const topT = 0.1, legW = 0.1;
+					const group = new T.Group();
+					group.name = opts.name ?? 'Table';
+
+					const topMat = new T.MeshStandardMaterial( { color: opts.topColor ?? 0x654321, roughness: 0.7, metalness: 0 } );
+					const legMat = new T.MeshStandardMaterial( { color: opts.legColor ?? 0x3d2817, roughness: 0.8, metalness: 0 } );
+
+					const top = new T.Mesh( new T.BoxGeometry( w, topT, d ), topMat );
+					top.position.set( 0, h - topT / 2, 0 );
+					top.name = 'Top';
+					group.add( top );
+
+					const legH = h - topT, lx = w / 2 - legW, lz = d / 2 - legW;
+					[ [ - lx, - lz ], [ lx, - lz ], [ - lx, lz ], [ lx, lz ] ].forEach( ( c, i ) => {
+
+						const leg = new T.Mesh( new T.BoxGeometry( legW, legH, legW ), legMat );
+						leg.position.set( c[ 0 ], legH / 2, c[ 1 ] );
+						leg.name = 'Leg ' + ( i + 1 );
+						group.add( leg );
+
+					} );
+
+					if ( opts.position ) {
+
+						if ( opts.position.isVector3 ) group.position.copy( opts.position );
+						else group.position.set( opts.position[ 0 ], opts.position[ 1 ] ?? 0, opts.position[ 2 ] );
+
+					}
+					return group;
+
+				},
+
+				// makeChair(opts) → a COMPLETE chair Group (seat + 4 legs + backrest),
+				// correctly proportioned and ORIENTED. Building chairs by hand repeatedly
+				// drops the legs and faces the backrest the wrong way for half the seats;
+				// this is the blessed, correct-by-construction path. Returns the Group
+				// (unadded). opts: { position:[x,y,z]|Vector3, faceToward:[x,z]|Vector3,
+				// rotationY, seatColor, legColor, scale, name }.
+				// The chair faces +Z by convention (backrest at -Z, behind the occupant).
+				// Pass faceToward the TABLE CENTER and it auto-rotates to face it, putting
+				// the backrest on the far side — so chairs on opposite sides both face in.
+				makeChair: function ( opts = {} ) {
+
+					const T = window.THREE;
+					const s = opts.scale ?? 1;
+					const group = new T.Group();
+					group.name = opts.name ?? 'Chair';
+
+					const seatMat = new T.MeshStandardMaterial( { color: opts.seatColor ?? 0x8B4513, roughness: 0.7, metalness: 0 } );
+					const legMat  = new T.MeshStandardMaterial( { color: opts.legColor ?? 0x654321, roughness: 0.8, metalness: 0 } );
+
+					const seatW = 0.5 * s, seatD = 0.5 * s, seatT = 0.08 * s;
+					const legH = 0.45 * s, legW = 0.06 * s;
+					const backH = 0.5 * s, backT = 0.06 * s;
+
+					const seat = new T.Mesh( new T.BoxGeometry( seatW, seatT, seatD ), seatMat );
+					seat.position.set( 0, legH + seatT / 2, 0 );
+					seat.name = 'Seat';
+					group.add( seat );
+
+					const lx = seatW / 2 - legW / 2, lz = seatD / 2 - legW / 2;
+					[ [ - lx, - lz ], [ lx, - lz ], [ - lx, lz ], [ lx, lz ] ].forEach( ( c, i ) => {
+
+						const leg = new T.Mesh( new T.BoxGeometry( legW, legH, legW ), legMat );
+						leg.position.set( c[ 0 ], legH / 2, c[ 1 ] );
+						leg.name = 'Leg ' + ( i + 1 );
+						group.add( leg );
+
+					} );
+
+					// Backrest behind the occupant (at -Z), rising above the seat.
+					const back = new T.Mesh( new T.BoxGeometry( seatW, backH, backT ), seatMat );
+					back.position.set( 0, legH + seatT + backH / 2, - seatD / 2 + backT / 2 );
+					back.name = 'Backrest';
+					group.add( back );
+
+					if ( opts.position ) {
+
+						if ( opts.position.isVector3 ) group.position.copy( opts.position );
+						else group.position.set( opts.position[ 0 ], opts.position[ 1 ] ?? 0, opts.position[ 2 ] );
+
+					}
+
+					// Orientation: face a target (backrest away from it) or an explicit angle.
+					if ( opts.faceToward ) {
+
+						const ft = opts.faceToward;
+						const tx = ft.isVector3 ? ft.x : ft[ 0 ];
+						const tz = ft.isVector3 ? ft.z : ft[ ft.length === 2 ? 1 : 2 ];
+						// local +Z → (sin ry, 0, cos ry); aim it from the chair toward the target.
+						group.rotation.y = Math.atan2( tx - group.position.x, tz - group.position.z );
+
+					} else if ( opts.rotationY !== undefined ) {
+
+						group.rotation.y = opts.rotationY;
+
+					}
+					return group;
+
+				},
+
 				// ── Third-party API ───────────────────────────────────────────────────
 				// fetchAPI(url, options?) — call any HTTP API from the console and get
 				// the parsed body back (JSON → object, else text). A plain-object body
@@ -996,6 +1106,9 @@ function Shell( editor ) {
 						sceneDiff,
 						confirmChange,
 						diffSummary,
+						inspectScene,
+						historyLen: () => editor.history.undos.length,
+						rollbackTo: ( len ) => { while ( editor.history.undos.length > len ) editor.history.undo(); },
 					},
 				} );
 
@@ -1075,7 +1188,9 @@ function Shell( editor ) {
 			const res = await runAgentic( {
 				editor, messages, intent: prompt, maxRetries: 3, tokenBudget: aiTokenBudget(),
 				deps: { streamCode, execute, appendOutput,
-					validateCode, snapshotScene, sceneDiff, confirmChange, diffSummary },
+					validateCode, snapshotScene, sceneDiff, confirmChange, diffSummary, inspectScene,
+					historyLen: () => editor.history.undos.length,
+					rollbackTo: ( len ) => { while ( editor.history.undos.length > len ) editor.history.undo(); } },
 			} );
 
 			const execOk = !! ( res && res.ok );
@@ -1170,8 +1285,13 @@ function Shell( editor ) {
 
 				}
 
-				// Set up external API with unified interface
+				// Set up external API with unified interface. When the caller supplies
+				// an onToken handler we ask the server to STREAM (Server-Sent Events) so
+				// cloud replies arrive token-by-token, exactly like the local WebLLM
+				// path; complete() (no onToken) keeps the simpler one-shot JSON request.
 				const streamFn = async ( messages, opts = {} ) => {
+
+					const wantStream = typeof opts.onToken === 'function';
 
 					// Retry on 429 (rate limit) with backoff so a transient limit never
 					// returns empty (which the agentic loop would mistake for "no code
@@ -1187,6 +1307,7 @@ function Shell( editor ) {
 								model: selectedModel,
 								messages,
 								temperature: opts.temperature ?? 0.7,
+								stream: wantStream,
 								// Cloud models bill by actual output tokens and stop at
 								// end_turn, so a generous cap costs nothing for short replies
 								// but prevents mid-code-block truncation (an unterminated
@@ -1197,23 +1318,69 @@ function Shell( editor ) {
 							} )
 						} );
 
-						const data = await res.json().catch( () => ( {} ) );
-
 						// Rate limited — wait and retry (don't surface as a code failure).
+						// Checked before reading the body so the stream isn't consumed.
 						if ( res.status === 429 && attempt < maxRateRetries ) {
 
 							const retryAfter = parseFloat( res.headers.get( 'retry-after' ) );
 							const waitMs = Number.isFinite( retryAfter )
 								? Math.ceil( retryAfter * 1000 )
 								: Math.min( 2000 * Math.pow( 2, attempt ), 30000 );
-							if ( opts.onToken ) opts.onToken( '', `⏳ rate limited — waiting ${ Math.round( waitMs / 1000 ) }s…` );
+							opts.onToken?.( '', `⏳ rate limited — waiting ${ Math.round( waitMs / 1000 ) }s…` );
 							await new Promise( r => setTimeout( r, waitMs ) );
 							continue;
 
 						}
 
-						// Surface other API/transport errors as exceptions so the loop
-						// reports them instead of mistaking an error string for "no code".
+						const contentType = res.headers.get( 'content-type' ) || '';
+
+						// ── Streaming path (Server-Sent Events) ─────────────────────────
+						if ( wantStream && res.ok && contentType.includes( 'text/event-stream' ) ) {
+
+							const reader = res.body.getReader();
+							const decoder = new TextDecoder();
+							let buf = '', full = '';
+
+							for ( ;; ) {
+
+								const { value, done } = await reader.read();
+								if ( done ) break;
+								buf += decoder.decode( value, { stream: true } );
+
+								// SSE events are separated by a blank line.
+								let sep;
+								while ( ( sep = buf.indexOf( '\n\n' ) ) >= 0 ) {
+
+									const evt = buf.slice( 0, sep );
+									buf = buf.slice( sep + 2 );
+
+									for ( const rawLine of evt.split( '\n' ) ) {
+
+										const line = rawLine.trim();
+										if ( ! line.startsWith( 'data:' ) ) continue;
+										const payload = line.slice( 5 ).trim();
+										if ( ! payload || payload === '[DONE]' ) continue;
+
+										let o;
+										try { o = JSON.parse( payload ); } catch { continue; }
+										if ( o.error ) throw new Error( o.error );
+										if ( o.delta ) { full += o.delta; opts.onToken( o.delta, full ); }
+
+									}
+
+								}
+
+							}
+
+							return full;
+
+						}
+
+						// ── One-shot JSON path (complete(), or non-streaming server) ────
+						const data = await res.json().catch( () => ( {} ) );
+
+						// Surface API/transport errors as exceptions so the loop reports
+						// them instead of mistaking an error string for "no code".
 						if ( ! res.ok || data.error ) {
 
 							const msg = data.error || `HTTP ${ res.status }`;
@@ -1226,7 +1393,8 @@ function Shell( editor ) {
 						// Handle both Ollama and OpenAI response formats
 						const answer = data.message?.content || data.choices?.[ 0 ]?.message?.content || '';
 
-						// Call onToken callback if provided (for streaming UI)
+						// Deliver the full answer to a streaming UI in one chunk when the
+						// server didn't stream (keeps the live output div populated).
 						if ( opts.onToken ) opts.onToken( '', answer );
 
 						return answer;

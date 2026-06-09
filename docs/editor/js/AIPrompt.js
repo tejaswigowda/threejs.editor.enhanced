@@ -49,6 +49,7 @@ GLOBALS (no THREE. prefix needed):
   Ground:   whatsVisible() whatsAt(x,y) findAPI(text)  (screen picking + real-signature lookup)
   Spatial:  getSize(o) getTopY(o) getCenter(o) placeOnTop(child,target)
   Lines:    lineFromPoints(points,color)  (points: Vector3[] or [x,y,z][] → a Line; for nets/wires/paths)
+  Furniture: makeTable({position:[x,y,z],width,depth,height}) makeChair({position:[x,y,z],faceToward:[tableX,tableZ]})  (complete legged furniture; chairs auto-face the table)
   Textures: makeTexture(fn,sz) makeCheckerTex(sz,dark,light,tiles) makeGridTex(sz,color,divs,bg)
   Modeling: booleanUnion(a,b) booleanSubtract(a,b) booleanIntersect(a,b) mirrorMesh(m,axis) arrayDuplicate(m,n,dx,dy,dz) subdivide(m,iters)
   EditMode: enterEditMode() exitEditMode() extrude(d) inset(t) bevel(t) deleteFaces() weld(eps) planarUV(axis) boxUV()
@@ -128,6 +129,14 @@ RULES:
    DISTINCT positions, NEVER the same coordinates (they would overlap). Pick shape-appropriate
    primitives: long thin things (bat, pole, sword, bottle, bone) = CylinderGeometry or an
    elongated Box — NOT a cube; round things = SphereGeometry.
+23. FURNITURE — chairs and tables have blessed builders; USE them instead of hand-placing
+   parts (hand-built chairs keep losing their legs and facing the backrest the wrong way for
+   half the seats). These ARE in scope (like lineFromPoints) — calling them is allowed:
+   makeTable({position:[x,y,z],width,depth,height}) → a legged table Group.
+   makeChair({position:[x,y,z],faceToward:[tableX,tableZ]}) → a complete chair (seat + 4 legs
+   + backrest) that AUTO-ROTATES so the occupant faces faceToward (the table center) with the
+   backrest on the far side. Add the returned Group with AddObjectCommand. Set faceToward to
+   the SAME table center for EVERY chair so chairs on opposite sides all face inward.
 
 EXAMPLES:
 
@@ -163,6 +172,20 @@ User: add a green cube next to it
   cube.name='Green Cube';
   if(ref){cube.position.copy(ref.position).add(new Vector3(1.5,0,0));}else{cube.position.y=0.5;}
   editor.execute(new AddObjectCommand(editor,cube));
+})();
+
+User: add a table with four chairs
+(function(){
+  const tx=0, tz=0;
+  const table=makeTable({position:[tx,0,tz],width:3,depth:2,height:0.75});
+  table.name='Dining Table';
+  editor.execute(new AddObjectCommand(editor,table));
+  const seats=[[tx,-1.5],[tx,1.5],[tx-1.5,0],[tx+1.5,0]];
+  seats.forEach((p,i)=>{
+    const chair=makeChair({position:[p[0],0,p[1]],faceToward:[tx,tz]});
+    chair.name='Chair '+(i+1);
+    editor.execute(new AddObjectCommand(editor,chair));
+  });
 })();
 
 User: make it bigger
