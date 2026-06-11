@@ -1,5 +1,6 @@
 import { UIPanel, UIRow, UIHorizontalRule } from './libs/ui.js';
 import { FileLoader } from 'three';
+import { setMenuIcon } from './Menubar.Icons.js';
 
 function MenubarFile( editor ) {
 
@@ -19,7 +20,8 @@ function MenubarFile( editor ) {
 
 	// New Project — single item, confirms then clears to empty scene
 
-	let option = new UIRow().setTextContent( strings.getKey( 'menubar/file/new' ) ).setClass( 'option' );
+	let option = new UIRow().setClass( 'option' );
+	setMenuIcon( option, 'new', strings.getKey( 'menubar/file/new' ) );
 	option.onClick( function () {
 
 		if ( confirm( strings.getKey( 'prompt/file/open' ) ) ) {
@@ -83,7 +85,6 @@ function MenubarFile( editor ) {
 
 	option = new UIRow()
 		.addClass( 'option' )
-		.setTextContent( strings.getKey( 'menubar/file/open' ) )
 		.onClick( function () {
 
 			if ( confirm( strings.getKey( 'prompt/file/open' ) ) ) {
@@ -93,6 +94,7 @@ function MenubarFile( editor ) {
 			}
 
 		} );
+	setMenuIcon( option, 'open', strings.getKey( 'menubar/file/open' ) );
 
 	options.add( option );
 
@@ -100,7 +102,6 @@ function MenubarFile( editor ) {
 
 	option = new UIRow()
 		.addClass( 'option' )
-		.setTextContent( strings.getKey( 'menubar/file/save' ) )
 		.onClick( function () {
 
 			const json = editor.toJSON();
@@ -108,6 +109,7 @@ function MenubarFile( editor ) {
 			editor.utils.save( blob, 'project.json' );
 
 		} );
+	setMenuIcon( option, 'save', strings.getKey( 'menubar/file/save' ) );
 
 	options.add( option );
 
@@ -134,12 +136,12 @@ function MenubarFile( editor ) {
 
 	option = new UIRow();
 	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/file/import' ) );
 	option.onClick( function () {
 
 		fileInput.click();
 
 	} );
+	setMenuIcon( option, 'import', strings.getKey( 'menubar/file/import' ) );
 	options.add( option );
 
 	return container;

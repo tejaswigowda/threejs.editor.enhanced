@@ -70,8 +70,6 @@
 			import { Sidebar } from './editor/js/Sidebar.js';
 			import { Menubar } from './editor/js/Menubar.js';
 			import { Resizer } from './editor/js/Resizer.js';
-			import { AnimationResizer } from './editor/js/AnimationResizer.js';
-			import { Animation } from './editor/js/Animation.js';
 			import { autoLoadFromGit } from './editor/js/Menubar.Git.js';
 
 			import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
@@ -108,35 +106,6 @@
 
 			const resizer = new Resizer( editor );
 			document.body.appendChild( resizer.dom );
-
-			const animation = new Animation( editor );
-			document.body.appendChild( animation.dom );
-
-			const animationResizer = new AnimationResizer( editor );
-			document.body.appendChild( animationResizer.dom );
-
-			editor.signals.animationPanelChanged.add( function ( height ) {
-
-				const visible = height !== false;
-
-				viewport.dom.classList.toggle( 'with-animation', visible );
-				toolbar.dom.classList.toggle( 'with-animation', visible );
-
-				if ( visible ) {
-
-					viewport.dom.style.bottom = height + 'px';
-					toolbar.dom.style.bottom = ( height + 20 ) + 'px';
-
-				} else {
-
-					viewport.dom.style.bottom = '';
-					toolbar.dom.style.bottom = '';
-
-				}
-
-				editor.signals.windowResize.dispatch();
-
-			} );
 
 			//
 

@@ -97,13 +97,47 @@ hr {
 	}
 
 	.TabbedPanel .Tabs .Tab {
-		padding: 10px 9px;
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		padding: 8px 10px 6px;
 		text-transform: uppercase;
+		min-width: 52px;
+		cursor: pointer;
+		border-bottom: 3px solid transparent;
+		transition: color 0.15s, background 0.15s, border-color 0.15s;
+	}
+
+	.TabbedPanel .Tabs .Tab:hover {
+		color: #08f;
+		background: rgba( 0, 136, 255, 0.06 );
+	}
+
+	.TabbedPanel .Tabs .Tab.selected {
+		color: #08f;
+		background: rgba( 0, 136, 255, 0.12 );
+		border-bottom-color: #08f;
+		font-weight: bold;
+	}
+
+	.TabbedPanel .Tabs .tab-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.TabbedPanel .Tabs .tab-label {
+		font-size: 9px;
+		letter-spacing: 0.04em;
+		line-height: 1;
+		text-align: center;
+		width: 100%;
 	}
 
 	.TabbedPanel .Panels {
 		position: absolute;
-		top: 36px;
+		top: 56px;
 		display: block;
 		width: 100%;
 	}
@@ -316,11 +350,16 @@ hr {
 
 /* UI */
 
+:root {
+	--sidebar-width: 350px;  /* used when docked left or right */
+	--sidebar-height: 420px; /* used when docked at the bottom */
+}
+
 #resizer {
 	position: absolute;
 	z-index: 2; /* Above #sidebar */
 	top: 36px;
-	right: 350px;
+	right: var( --sidebar-width );
 	width: 5px;
 	bottom: 0px;
 	transform: translatex(2.5px);
@@ -342,8 +381,8 @@ hr {
 	position: absolute;
 	top: 36px;
 	left: 0;
-	right: 350px;
-	bottom: 36px;
+	right: var( --sidebar-width );
+	bottom: 0;
 }
 
 	#viewport .Text {
@@ -354,7 +393,7 @@ hr {
 #animation {
 	position: absolute;
 	left: 0;
-	right: 350px;
+	right: var( --sidebar-width );
 	bottom: 0;
 	height: 36px;
 	background: #eee;
@@ -374,7 +413,7 @@ hr {
 #animation-resizer {
 	position: absolute;
 	left: 0;
-	right: 350px;
+	right: var( --sidebar-width );
 	bottom: 36px;
 	height: 5px;
 	transform: translateY(2.5px);
@@ -397,7 +436,7 @@ hr {
 	position: absolute;
 	top: 36px;
 	left: 0;
-	right: 350px;
+	right: var( --sidebar-width );
 	bottom: 0;
 	opacity: 0.9;
 }
@@ -406,8 +445,253 @@ hr {
 	position: absolute;
 	top: 36px;
 	left: 0;
-	right: 350px;
+	right: var( --sidebar-width );
 	bottom: 0;
+}
+
+/* ── Sidebar docking position (toggled from the menubar) ─────────────────────
+   Default (no body class) keeps the sidebar on the right. */
+
+/* Sidebar docked left */
+body.sidebar-left #sidebar {
+	left: 0;
+	right: auto;
+}
+
+body.sidebar-left #viewport,
+body.sidebar-left #script,
+body.sidebar-left #player,
+body.sidebar-left #animation,
+body.sidebar-left #animation-resizer {
+	left: var( --sidebar-width );
+	right: 0;
+}
+
+body.sidebar-left #resizer {
+	left: var( --sidebar-width );
+	right: auto;
+	transform: translateX(-2.5px);
+}
+
+body.sidebar-left #toolbar {
+	left: calc(50% + var( --sidebar-width ) / 2); /* centered in the viewport area (left dock) */
+}
+
+/* Inspector hidden (close button in overlay mode) */
+body.sidebar-hidden #sidebar {
+	display: none;
+}
+
+/* Sidebar overlay — floats freely over the viewport; JS controls left/top/width/height */
+body.sidebar-overlay #sidebar {
+	right: auto;
+	bottom: auto;
+	z-index: 5;
+	box-shadow: 0 6px 28px rgba( 0, 0, 0, 0.45 );
+	border-radius: 6px;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	min-width: 280px;
+	min-height: 200px;
+}
+
+/* Make the TabbedPanel fill the overlay height */
+body.sidebar-overlay #sidebar .TabbedPanel {
+	display: contents;
+}
+
+body.sidebar-overlay #sidebar .Tabs {
+	flex-shrink: 0;
+	order: 2;
+}
+
+body.sidebar-overlay #sidebar .Panels {
+	position: static;
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	order: 3;
+}
+
+/* Drag handle — only shown in overlay mode */
+#overlay-handle {
+	display: none;
+}
+
+body.sidebar-overlay #overlay-handle {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 22px;
+	flex-shrink: 0;
+	order: 1;
+	position: relative;
+	background: #d4d4d4;
+	border-bottom: 1px solid #bbb;
+	cursor: grab;
+	user-select: none;
+}
+
+body.sidebar-overlay #overlay-handle:active {
+	cursor: grabbing;
+	background: #c8c8c8;
+}
+
+body.sidebar-overlay #overlay-handle::after {
+	content: '';
+	display: block;
+	width: 36px;
+	height: 4px;
+	border-radius: 2px;
+	background: repeating-linear-gradient(
+		90deg,
+		#999 0 3px,
+		transparent 3px 6px
+	);
+}
+
+/* Close button — only shown in overlay mode */
+#overlay-close {
+	display: none;
+}
+
+body.sidebar-overlay #overlay-close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: absolute;
+	right: 6px;
+	top: 50%;
+	transform: translateY( -50% );
+	width: 18px;
+	height: 18px;
+	border: none;
+	background: transparent;
+	color: #777;
+	cursor: pointer;
+	font-size: 12px;
+	border-radius: 3px;
+	padding: 0;
+	line-height: 1;
+}
+
+body.sidebar-overlay #overlay-close:hover {
+	background: rgba( 200, 0, 0, 0.15 );
+	color: #c00;
+}
+
+/* Resize grip — only shown in overlay mode */
+#overlay-grip {
+	display: none;
+}
+
+body.sidebar-overlay #overlay-grip {
+	display: block;
+	position: absolute;
+	bottom: 0;
+	right: 0;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+	z-index: 6;
+	background: linear-gradient(
+		135deg,
+		transparent 40%,
+		#bbb 40%, transparent 50%,
+		#bbb 50%, transparent 60%,
+		#bbb 60%, transparent 70%,
+		#bbb 70%, transparent 80%,
+		#bbb 80%, transparent 90%
+	);
+}
+
+body.sidebar-overlay #viewport,
+body.sidebar-overlay #script,
+body.sidebar-overlay #player,
+body.sidebar-overlay #animation,
+body.sidebar-overlay #animation-resizer {
+	left: 0;
+	right: 0;
+}
+
+body.sidebar-overlay #resizer {
+	display: none;
+}
+
+body.sidebar-overlay #toolbar {
+	left: 50%;
+}
+
+
+body.sidebar-bottom #sidebar {
+	left: 0;
+	right: 0;
+	top: auto;
+	bottom: 0;
+	width: 100%;
+	height: var( --sidebar-height );
+}
+
+body.sidebar-bottom #viewport,
+body.sidebar-bottom #script,
+body.sidebar-bottom #player {
+	left: 0;
+	right: 0;
+	bottom: var( --sidebar-height );
+}
+
+body.sidebar-bottom #animation,
+body.sidebar-bottom #animation-resizer {
+	display: none;
+}
+
+body.sidebar-bottom #resizer {
+	top: auto;
+	left: 0;
+	right: 0;
+	width: auto;
+	height: 16px;
+	bottom: var( --sidebar-height );
+	transform: translateY( 8px ); /* shift DOWN so the element straddles the sidebar top edge */
+	cursor: row-resize;
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+}
+
+body.sidebar-bottom #resizer::after {
+	content: '';
+	display: block;
+	width: 48px;
+	height: 4px;
+	border-radius: 2px;
+	background: #888;
+	pointer-events: none;
+	transition: background 0.15s;
+}
+
+body.sidebar-bottom #resizer:hover {
+	background: rgba( 0, 136, 255, 0.10 );
+}
+
+body.sidebar-bottom #resizer:hover::after,
+body.sidebar-bottom #resizer:active::after {
+	background: #08f;
+}
+
+body.sidebar-bottom #toolbar {
+	left: 50%; /* full-width viewport */
+	bottom: calc( var( --sidebar-height ) + 16px );
+}
+
+/* In bottom-dock the sidebar has a fixed height — make the panels area scrollable. */
+body.sidebar-bottom .TabbedPanel .Panels {
+	bottom: 0;
+	overflow-y: auto;
+	height: calc( var( --sidebar-height ) - 36px );
 }
 
 /* JS Shell panel */
@@ -417,7 +701,7 @@ hr {
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
-	height: calc(100vh - 72px);   /* viewport minus menubar (36) + tab row (36) */
+	height: calc(100vh - 92px);   /* right/left dock: viewport minus menubar (36) + tab row (56) */
 	margin: 0;
 	padding: 0;
 	border: 0;
@@ -425,6 +709,11 @@ hr {
 	font-family: 'Courier New', Courier, monospace;
 	font-size: 13px;
 	color: #ddd;
+}
+
+/* In bottom-dock the sidebar height is var(--sidebar-height); subtract the tab strip (36px). */
+body.sidebar-bottom #sidebar #shell {
+	height: calc( var( --sidebar-height ) - 56px );
 }
 
 #shell-header {
@@ -725,14 +1014,100 @@ hr {
 			cursor: not-allowed;
 		}
 
-		
+	/* Flat menubar: no expandable dropdowns — every action sits on one line */
+
+	#menubar .menu:not(.right) .title {
+		display: none;
+	}
+
+	/* Vertical separators between the File | Edit | View groups */
+	#menubar .menu:not(.right) + .menu:not(.right) {
+		border-left: 1px solid #ccc;
+		padding-left: 8px;
+	}
+
+	#menubar .menu .options,
+	#menubar .menu:hover .options {
+		position: static;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		height: 36px;
+		padding: 0;
+		margin: 0;
+		min-width: 0;
+		max-height: none;
+		overflow: visible;
+		background: transparent;
+		box-shadow: none;
+	}
+
+		#menubar .menu .options hr,
+		#menubar .menu .options .key {
+			display: none;
+		}
+
+		#menubar .menu .options .option {
+			cursor: pointer;
+		}
+
+		#menubar .menu .options .option,
+		#menubar .menu .options .inactive {
+			display: inline-flex;
+			align-items: center;
+			height: 36px;
+			padding: 0 9px;
+			line-height: normal;
+			position: relative;
+		}
+
+	/* Instant CSS tooltip on hover (native title is slow/unreliable) */
+	#menubar [data-tooltip] {
+		position: relative;
+	}
+
+	#menubar [data-tooltip]:hover::after {
+		content: attr(data-tooltip);
+		position: absolute;
+		top: 100%;
+		left: 50%;
+		transform: translateX(-50%);
+		margin-top: 6px;
+		padding: 4px 8px;
+		background: #222;
+		color: #fff;
+		font-size: 11px;
+		line-height: 1.3;
+		white-space: nowrap;
+		border-radius: 4px;
+		box-shadow: 0 2px 6px #00000066;
+		pointer-events: none;
+		z-index: 10;
+	}
+
+	/* Keep right-aligned status tooltips from overflowing the viewport edge */
+	#menubar .menu.right [data-tooltip]:hover::after {
+		left: auto;
+		right: 0;
+		transform: none;
+	}
+
+		/* Toggles show their state by colouring the icon, not a checkmark */
+		#menubar .menu .options .option.toggle::before {
+			content: none;
+			width: 0;
+		}
+
+		#menubar .menu .options .option.toggle-on {
+			color: #08f;
+		}
 
 #sidebar {
 	position: absolute;
 	right: 0;
 	top: 36px;
 	bottom: 0;
-	width: 350px;
+	width: var( --sidebar-width );
 	background: #eee;
 	overflow: auto;
 	overflow-x: hidden;
@@ -779,7 +1154,7 @@ hr {
 
 #toolbar {
 	position: absolute;
-	left: calc(50% - 175px);
+	left: calc(50% - var( --sidebar-width ) / 2); /* centered in the viewport area (right dock) */
 	transform: translateX(-50%);
 	bottom: 56px;
 	height: 32px;
@@ -840,13 +1215,14 @@ hr {
 }
 
 	.TabbedPanel .Tab {
-		color: #aaa;
+		color: #999;
 		border-right: 1px solid #ccc;
 	}
 
 	.TabbedPanel .Tab.selected {
-		color: #888;
-		background-color: #eee;
+		color: #08f;
+		background-color: rgba( 0, 136, 255, 0.10 );
+		border-bottom-color: #08f;
 	}
 
 .Listbox {
@@ -959,6 +1335,10 @@ hr {
 	#menubar {
 		background: #111;
 	}
+
+			#menubar .menu:not(.right) + .menu:not(.right) {
+				border-left-color: #333;
+			}
 
 			#menubar .menu .key {
 				color: #444;

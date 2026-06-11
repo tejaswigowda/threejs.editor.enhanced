@@ -8,20 +8,10 @@ function Animation( editor ) {
 	const strings = editor.strings;
 	const mixer = editor.mixer;
 
+	// Lives in its own sidebar tab (no longer a docked bottom bar).
 	const container = new UIPanel();
-	container.setId( 'animation' );
+	container.dom.style.display = 'flex';
 	container.dom.style.flexDirection = 'column';
-
-	let panelHeight = 36;
-
-	// Listen for resizer changes
-	signals.animationPanelResized.add( function ( height ) {
-
-		panelHeight = height;
-		container.dom.style.height = height + 'px';
-		signals.animationPanelChanged.dispatch( height );
-
-	} );
 
 	// Top bar - playback controls
 	const controlsPanel = new UIPanel();
@@ -31,6 +21,7 @@ function Animation( editor ) {
 	controlsPanel.dom.style.alignItems = 'center';
 	controlsPanel.dom.style.justifyContent = 'center';
 	controlsPanel.dom.style.gap = '6px';
+	controlsPanel.dom.style.flexWrap = 'wrap';
 	controlsPanel.dom.style.flexShrink = '0';
 	container.add( controlsPanel );
 
@@ -143,9 +134,10 @@ function Animation( editor ) {
 	controlsPanel.add( new UIText( strings.getKey( 'sidebar/animations/timescale' ) ).setClass( 'Label' ) );
 	controlsPanel.add( mixerTimeScaleNumber );
 
-	// Timeline area with track rows
+	// Timeline area with track rows. A fixed height gives the inner track list a
+	// scroll basis inside the (auto-height) sidebar tab.
 	const timelineArea = document.createElement( 'div' );
-	timelineArea.style.flex = '1';
+	timelineArea.style.height = '360px';
 	timelineArea.style.display = 'flex';
 	timelineArea.style.flexDirection = 'column';
 	timelineArea.style.overflow = 'hidden';
@@ -322,10 +314,6 @@ function Animation( editor ) {
 	function update() {
 
 		trackListContainer.innerHTML = '';
-
-		container.setDisplay( 'flex' );
-		container.dom.style.height = panelHeight + 'px';
-		signals.animationPanelChanged.dispatch( panelHeight );
 
 		const clips = getAnimationClips();
 
@@ -606,10 +594,7 @@ function Animation( editor ) {
 	signals.objectAdded.add( update );
 	signals.objectRemoved.add( update );
 
-	// Show panel on initial load
-	container.setDisplay( 'flex' );
-	container.dom.style.height = panelHeight + 'px';
-	signals.animationPanelChanged.dispatch( panelHeight );
+	update();
 
 	return container;
 

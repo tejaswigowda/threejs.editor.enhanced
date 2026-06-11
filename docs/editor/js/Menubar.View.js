@@ -1,4 +1,5 @@
 import { UIHorizontalRule, UIPanel, UIRow } from './libs/ui.js';
+import { setMenuIcon, setMenuTooltip } from './Menubar.Icons.js';
 
 function MenubarView( editor ) {
 
@@ -28,61 +29,39 @@ function MenubarView( editor ) {
 
 	};
 
-	// Grid Helper
+	// Each helper toggle shows its icon; the hover label reflects what a click
+	// will do next ("Hide …" when visible, "Show …" when hidden).
 
-	let option = new UIRow().addClass( 'option' ).addClass( 'toggle' ).setTextContent( strings.getKey( 'menubar/view/gridHelper' ) ).onClick( function () {
+	function addHelperToggle( iconName, stateKey ) {
 
-		states.gridHelper = ! states.gridHelper;
+		const base = strings.getKey( 'menubar/view/' + iconName );
+		const option = new UIRow().addClass( 'option' ).addClass( 'toggle' );
+		setMenuIcon( option, iconName, base );
 
-		this.toggleClass( 'toggle-on', states.gridHelper );
+		function refresh() {
 
-		signals.showHelpersChanged.dispatch( states );
+			option.toggleClass( 'toggle-on', states[ stateKey ] );
+			setMenuTooltip( option, ( states[ stateKey ] ? 'Hide ' : 'Show ' ) + base );
 
-	} ).toggleClass( 'toggle-on', states.gridHelper );
+		}
 
-	options.add( option );
+		option.onClick( function () {
 
-	// Camera Helpers
+			states[ stateKey ] = ! states[ stateKey ];
+			refresh();
+			signals.showHelpersChanged.dispatch( states );
 
-	option = new UIRow().addClass( 'option' ).addClass( 'toggle' ).setTextContent( strings.getKey( 'menubar/view/cameraHelpers' ) ).onClick( function () {
+		} );
 
-		states.cameraHelpers = ! states.cameraHelpers;
+		refresh();
+		options.add( option );
 
-		this.toggleClass( 'toggle-on', states.cameraHelpers );
+	}
 
-		signals.showHelpersChanged.dispatch( states );
-
-	} ).toggleClass( 'toggle-on', states.cameraHelpers );
-
-	options.add( option );
-
-	// Light Helpers
-
-	option = new UIRow().addClass( 'option' ).addClass( 'toggle' ).setTextContent( strings.getKey( 'menubar/view/lightHelpers' ) ).onClick( function () {
-
-		states.lightHelpers = ! states.lightHelpers;
-
-		this.toggleClass( 'toggle-on', states.lightHelpers );
-
-		signals.showHelpersChanged.dispatch( states );
-
-	} ).toggleClass( 'toggle-on', states.lightHelpers );
-
-	options.add( option );
-
-	// Skeleton Helpers
-
-	option = new UIRow().addClass( 'option' ).addClass( 'toggle' ).setTextContent( strings.getKey( 'menubar/view/skeletonHelpers' ) ).onClick( function () {
-
-		states.skeletonHelpers = ! states.skeletonHelpers;
-
-		this.toggleClass( 'toggle-on', states.skeletonHelpers );
-
-		signals.showHelpersChanged.dispatch( states );
-
-	} ).toggleClass( 'toggle-on', states.skeletonHelpers );
-
-	options.add( option );
+	addHelperToggle( 'gridHelper', 'gridHelper' );
+	addHelperToggle( 'cameraHelpers', 'cameraHelpers' );
+	addHelperToggle( 'lightHelpers', 'lightHelpers' );
+	addHelperToggle( 'skeletonHelpers', 'skeletonHelpers' );
 
 	// new helpers are visible by default, the global visibility state
 	// of helpers is managed in this component. every time a helper is added,
@@ -98,121 +77,17 @@ function MenubarView( editor ) {
 
 	options.add( new UIHorizontalRule() );
 
-	// JS Shell
-
-	option = new UIRow();
-	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/view/shell' ) );
-	option.onClick( function () {
-
-		signals.toggleShell.dispatch();
-
-	} );
-	options.add( option );
-
 	// Show JS for selection
 
-	option = new UIRow();
+	const option = new UIRow();
 	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/view/showJS' ) );
+	setMenuIcon( option, 'showJS', strings.getKey( 'menubar/view/showJS' ) );
 	option.onClick( function () {
 
 		signals.showJSForSelection.dispatch();
 
 	} );
 	options.add( option );
-
-	//
-
-	options.add( new UIHorizontalRule() );
-
-	// Fullscreen
-
-	option = new UIRow();
-	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/view/fullscreen' ) );
-	option.onClick( function () {
-
-		if ( document.fullscreenElement === null ) {
-
-			document.documentElement.requestFullscreen();
-
-		} else if ( document.exitFullscreen ) {
-
-			document.exitFullscreen();
-
-		}
-
-		// Safari
-
-		if ( document.webkitFullscreenElement === null ) {
-
-			document.documentElement.webkitRequestFullscreen();
-
-		} else if ( document.webkitExitFullscreen ) {
-
-			document.webkitExitFullscreen();
-
-		}
-
-	} );
-	options.add( option );
-
-	// XR (Work in progress)
-
-	if ( 'xr' in navigator ) {
-
-		if ( 'offerSession' in navigator.xr ) {
-
-			signals.offerXR.dispatch( 'immersive-ar' );
-
-		} else {
-
-			navigator.xr.isSessionSupported( 'immersive-ar' )
-				.then( function ( supported ) {
-
-					if ( supported ) {
-
-						const option = new UIRow();
-						option.setClass( 'option' );
-						option.setTextContent( 'AR' );
-						option.onClick( function () {
-
-							signals.enterXR.dispatch( 'immersive-ar' );
-
-						} );
-						options.add( option );
-
-					} else {
-
-						navigator.xr.isSessionSupported( 'immersive-vr' )
-							.then( function ( supported ) {
-
-								if ( supported ) {
-
-									const option = new UIRow();
-									option.setClass( 'option' );
-									option.setTextContent( 'VR' );
-									option.onClick( function () {
-
-										signals.enterXR.dispatch( 'immersive-vr' );
-
-									} );
-									options.add( option );
-
-								}
-
-							} );
-
-					}
-
-				} );
-
-		}
-
-	}
-
-	//
 
 	return container;
 

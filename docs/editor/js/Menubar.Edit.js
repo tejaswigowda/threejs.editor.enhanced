@@ -1,7 +1,8 @@
 import { Box3, Vector3 } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 
-import { UIPanel, UIRow, UIHorizontalRule, UIText } from './libs/ui.js';
+import { UIPanel, UIRow, UIHorizontalRule } from './libs/ui.js';
+import { setMenuIcon } from './Menubar.Icons.js';
 
 import { AddObjectCommand } from './commands/AddObjectCommand.js';
 import { MultiCmdsCommand } from './commands/MultiCmdsCommand.js';
@@ -30,8 +31,7 @@ function MenubarEdit( editor ) {
 
 	const undo = new UIRow();
 	undo.setClass( 'option' );
-	undo.setTextContent( strings.getKey( 'menubar/edit/undo' ) );
-	undo.add( new UIText( 'CTRL+Z' ).setClass( 'key' ) );
+	setMenuIcon( undo, 'undo', strings.getKey( 'menubar/edit/undo' ) + ' (Ctrl+Z)' );
 	undo.onClick( function () {
 
 		editor.undo();
@@ -43,8 +43,7 @@ function MenubarEdit( editor ) {
 
 	const redo = new UIRow();
 	redo.setClass( 'option' );
-	redo.setTextContent( strings.getKey( 'menubar/edit/redo' ) );
-	redo.add( new UIText( 'CTRL+SHIFT+Z' ).setClass( 'key' ) );
+	setMenuIcon( redo, 'redo', strings.getKey( 'menubar/edit/redo' ) + ' (Ctrl+Shift+Z)' );
 	redo.onClick( function () {
 
 		editor.redo();
@@ -84,7 +83,7 @@ function MenubarEdit( editor ) {
 
 	let option = new UIRow();
 	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/edit/center' ) );
+	setMenuIcon( option, 'center', strings.getKey( 'menubar/edit/center' ) );
 	option.onClick( function () {
 
 		const object = editor.selected;
@@ -108,7 +107,7 @@ function MenubarEdit( editor ) {
 
 	option = new UIRow();
 	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/edit/clone' ) );
+	setMenuIcon( option, 'clone', strings.getKey( 'menubar/edit/clone' ) );
 	option.onClick( function () {
 
 		let object = editor.selected;
@@ -126,8 +125,7 @@ function MenubarEdit( editor ) {
 
 	option = new UIRow();
 	option.setClass( 'option' );
-	option.setTextContent( strings.getKey( 'menubar/edit/delete' ) );
-	option.add( new UIText( 'DEL' ).setClass( 'key' ) );
+	setMenuIcon( option, 'delete', strings.getKey( 'menubar/edit/delete' ) + ' (Del)' );
 	option.onClick( function () {
 
 		const object = editor.selected;
@@ -156,8 +154,7 @@ function MenubarEdit( editor ) {
 
 	option = new UIRow();
 	option.setClass( 'option' );
-	option.setTextContent( 'Group' );
-	option.add( new UIText( 'CTRL+G' ).setClass( 'key' ) );
+	setMenuIcon( option, 'group', 'Group (Ctrl+G)' );
 	option.onClick( function () {
 
 		const objects = editor.getSelectedObjects().filter( o => o !== null && o.parent !== null );
@@ -173,8 +170,7 @@ function MenubarEdit( editor ) {
 
 	option = new UIRow();
 	option.setClass( 'option' );
-	option.setTextContent( 'Ungroup' );
-	option.add( new UIText( 'CTRL+SHIFT+G' ).setClass( 'key' ) );
+	setMenuIcon( option, 'ungroup', 'Ungroup (Ctrl+Shift+G)' );
 	option.onClick( function () {
 
 		const object = editor.selected;

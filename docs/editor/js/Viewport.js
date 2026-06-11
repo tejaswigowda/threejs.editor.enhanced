@@ -49,15 +49,65 @@ function Viewport( editor ) {
 
 	const grid = new THREE.Group();
 
-	const grid1 = new THREE.GridHelper( 30, 30 );
-	grid1.material.color.setHex( GRID_COLORS_LIGHT[ 0 ] );
-	grid1.material.vertexColors = false;
-	grid.add( grid1 );
+	// Infinite grid: a large ground plane drawn with a shader so the lines appear
+	// to extend forever and fade out with distance. The plane follows the camera
+	// each frame (see render()), while the lines stay locked to world coordinates.
 
-	const grid2 = new THREE.GridHelper( 30, 6 );
-	grid2.material.color.setHex( GRID_COLORS_LIGHT[ 1 ] );
-	grid2.material.vertexColors = false;
-	grid.add( grid2 );
+	const gridMaterial = new THREE.ShaderMaterial( {
+		uniforms: {
+			uColor1: { value: new THREE.Color( GRID_COLORS_LIGHT[ 0 ] ) },
+			uColor2: { value: new THREE.Color( GRID_COLORS_LIGHT[ 1 ] ) },
+			uDistance: { value: 100 }
+		},
+		vertexShader: /* glsl */`
+			varying vec3 vWorldPos;
+			void main() {
+				vec4 world = modelMatrix * vec4( position, 1.0 );
+				vWorldPos = world.xyz;
+				gl_Position = projectionMatrix * viewMatrix * world;
+			}
+		`,
+		fragmentShader: /* glsl */`
+			uniform vec3 uColor1;
+			uniform vec3 uColor2;
+			uniform float uDistance;
+			varying vec3 vWorldPos;
+
+			// Anti-aliased grid lines at the given spacing (in world units).
+			float getGrid( float size ) {
+				vec2 r = vWorldPos.xz / size;
+				vec2 grid = abs( fract( r - 0.5 ) - 0.5 ) / fwidth( r );
+				return 1.0 - min( min( grid.x, grid.y ), 1.0 );
+			}
+
+			void main() {
+				float minorLine = getGrid( 1.0 );
+				float majorLine = getGrid( 10.0 );
+
+				float d = distance( cameraPosition.xz, vWorldPos.xz );
+				float minorFade = 1.0 - clamp( d / uDistance, 0.0, 1.0 );
+				float majorFade = 1.0 - clamp( d / ( uDistance * 5.0 ), 0.0, 1.0 );
+
+				float alpha = max( minorLine * minorFade, majorLine * majorFade );
+				if ( alpha <= 0.001 ) discard;
+
+				// Major (decade) lines take the stronger colour; they coincide with minor lines.
+				vec3 color = mix( uColor1, uColor2, majorLine );
+				gl_FragColor = vec4( color, alpha );
+			}
+		`,
+		transparent: true,
+		side: THREE.DoubleSide,
+		depthWrite: false,
+		extensions: { derivatives: true }
+	} );
+
+	const gridGeometry = new THREE.PlaneGeometry( 10000, 10000 );
+	gridGeometry.rotateX( - Math.PI / 2 );
+
+	const infiniteGrid = new THREE.Mesh( gridGeometry, gridMaterial );
+	infiniteGrid.frustumCulled = false;
+	grid.add( infiniteGrid );
 
 	const viewHelper = new ViewHelper( camera, container );
 	viewHelper.onRequireRender = () => render();
@@ -533,14 +583,14 @@ function Viewport( editor ) {
 			mediaQuery.addEventListener( 'change', function ( event ) {
 
 				renderer.setClearColor( event.matches ? 0x333333 : 0xaaaaaa );
-				updateGridColors( grid1, grid2, event.matches ? GRID_COLORS_DARK : GRID_COLORS_LIGHT );
+				updateGridColors( gridMaterial, event.matches ? GRID_COLORS_DARK : GRID_COLORS_LIGHT );
 
 				render();
 
 			} );
 
 			renderer.setClearColor( mediaQuery.matches ? 0x333333 : 0xaaaaaa );
-			updateGridColors( grid1, grid2, mediaQuery.matches ? GRID_COLORS_DARK : GRID_COLORS_LIGHT );
+			updateGridColors( gridMaterial, mediaQuery.matches ? GRID_COLORS_DARK : GRID_COLORS_LIGHT );
 
 		}
 
@@ -1165,7 +1215,13 @@ function Viewport( editor ) {
 		if ( camera === editor.viewportCamera ) {
 
 			renderer.autoClear = false;
-			if ( grid.visible === true ) renderer.render( grid, camera );
+			if ( grid.visible === true ) {
+
+				// Keep the infinite grid plane centred under the camera so it always fills the view.
+				infiniteGrid.position.set( editor.viewportCamera.position.x, 0, editor.viewportCamera.position.z );
+				renderer.render( grid, camera );
+
+			}
 			if ( sceneHelpers.visible === true ) renderer.render( sceneHelpers, camera );
 			if ( renderer.xr.isPresenting !== true ) viewHelper.render( renderer );
 			renderer.autoClear = true;
@@ -1181,10 +1237,10 @@ function Viewport( editor ) {
 
 }
 
-function updateGridColors( grid1, grid2, colors ) {
+function updateGridColors( material, colors ) {
 
-	grid1.material.color.setHex( colors[ 0 ] );
-	grid2.material.color.setHex( colors[ 1 ] );
+	material.uniforms.uColor1.value.setHex( colors[ 0 ] );
+	material.uniforms.uColor2.value.setHex( colors[ 1 ] );
 
 }
 
