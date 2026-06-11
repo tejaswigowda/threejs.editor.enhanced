@@ -67,6 +67,14 @@ export const EVAL_PROMPTS = [
 	// primitives (a bat is elongated, not a cube). Spatial axis catches co-location.
 	{ prompt: 'make a bat and ball',      tier: 'layout',        expect: { minObjects: 2 } },
 
+	// Animation — author a keyframe CLIP on a seeded object (no new scene objects, so
+	// minObjects is 0). Guards that the animation classes + addClip stay in scope and
+	// that the model emits a clip instead of a forbidden requestAnimationFrame loop.
+	{ prompt: 'make the box bounce', tier: 'animation', expect: { minObjects: 0 },
+		setup: "(function(){const b=new Mesh(new BoxGeometry(1,1,1),new MeshStandardMaterial({color:0x3366ff}));b.name='Box';b.position.y=0.5;editor.execute(new AddObjectCommand(editor,b));editor.select(b);})();" },
+	{ prompt: 'spin it 360 degrees over 2 seconds', tier: 'animation', expect: { minObjects: 0 },
+		setup: "(function(){const w=new Mesh(new CylinderGeometry(1,1,0.2,24),new MeshStandardMaterial({color:0x888888}));w.name='Wheel';w.position.y=1;w.rotation.x=Math.PI/2;editor.execute(new AddObjectCommand(editor,w));editor.select(w);})();" },
+
 	// Off-domain — open generalization. A traffic intersection is NOT a chessboard.
 	{ prompt: 'make a small kitchen',     tier: 'off-domain',    expect: { minObjects: 3 } },
 	{ prompt: 'make a traffic intersection', tier: 'off-domain', expect: { minObjects: 3, noChessTemplate: true } },

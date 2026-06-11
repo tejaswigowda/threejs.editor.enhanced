@@ -41,6 +41,7 @@ DEV=1 node server.js
 | **Scene Q&A** | Ask the AI about the scene in plain English (prefix with `?`). No code generated or run. |
 | **Modeling ops** | Boolean CSG, mirror, array, subdivision — undoable and AI-callable. |
 | **Edit Mode** | Half-edge mesh editing: vertex/edge/face selection, extrude, inset, bevel, delete, weld, UV projection. |
+| **Keyframe animation** | An **Animations** tab to author clips by hand (create / key / interpolate / play) — and the AI can author clips too ("make the box bounce", "spin it 360° over 2s") via `addClip`. |
 | **Scene intelligence** | Resolve descriptive part references ("the right arm of the red person") on imported GLBs with meaningless node names — geometry + color + symmetry descriptors, no vision model. |
 | **Parametric codegen** | Edited meshes record a construction recipe (primitive + ops) so "export as JS" stays readable instead of dumping raw vertices. |
 | **Git integration** | Auto-load on open, commit, and a split-screen merge-conflict viewport. AI writes diff-aware commit messages. |
@@ -172,7 +173,12 @@ MeshPhongMaterial MeshLambertMaterial LineBasicMaterial
 
 Mesh Group Line Points
 DirectionalLight PointLight AmbientLight SpotLight
-Color Vector3 Vector2 Euler
+Color Vector3 Vector2 Euler Quaternion
+
+// Keyframe animation
+AnimationClip VectorKeyframeTrack QuaternionKeyframeTrack
+NumberKeyframeTrack ColorKeyframeTrack
+addClip(object, clip)   // register a clip on object (or scene) → shows in Animations tab, playable
 ```
 
 ### Object lookup
@@ -378,6 +384,41 @@ Readable, replayable, and git-diffable ("added: bevel" vs "400 floats changed").
 
 ---
 
+## Keyframe animation
+
+The **Animations** tab (right sidebar) is a full keyframe editor layered on `THREE.AnimationMixer`.
+
+- **+ Clip** creates a clip; **◆ Key** records a keyframe for the selected object at the playhead
+  on the enabled channels (**P** = position, **R** = rotation/quaternion, **S** = scale); **Del Key**
+  / **🗑 Clip** remove them. **Auto** records a key whenever the selected object is transformed.
+- Play / Pause / Stop and a draggable playhead; click a keyframe to scrub, drag it to retime,
+  double-click a clip to rename. **Snap** quantises key times to an FPS grid.
+- Clips are stored on `object.animations` (track name `<uuid>.<property>`) and serialise with the scene.
+
+### AI-authored clips
+
+The AI agent can author clips from natural language — "make the box bounce", "spin the wheel 360°
+over 2 seconds", "fade it out". It builds real `KeyframeTrack`s and registers them with the
+`addClip(object, clip)` helper, which drops the clip into the Animations tab ready to play:
+
+```js
+// what the agent emits for "make the box bounce"
+const o = editor.selected;
+const track = new VectorKeyframeTrack(
+  o.uuid + '.position', [0, 0.5, 1],
+  [o.position.x, o.position.y, o.position.z,
+   o.position.x, o.position.y + 2, o.position.z,
+   o.position.x, o.position.y, o.position.z]);
+addClip(o, new AnimationClip('Bounce', -1, [track]));
+```
+
+The animation classes are in scope and on the validator allow-list, so generated clips pass the
+same hallucination/arity lint as any other code. Position/scale use `VectorKeyframeTrack` (3 floats
+per key), rotation uses `QuaternionKeyframeTrack` (4 floats, built from `Quaternion.setFromEuler`).
+The agent authors **clips only** — runtime `requestAnimationFrame` loops remain out of scope.
+
+---
+
 ## Scene intelligence
 
 Resolves natural-language part references against imported GLBs whose nodes are named `Object_12, Object_44, …` — using **only deterministic math, the existing renderer, and the already-loaded code LLM. No new model download.**
@@ -492,6 +533,7 @@ docs/editor/js/
     validate.js        — static lint (hallucination / arity / undefined-call / dup-const / shared-material …)
     agentLoop.js       — generate→validate→execute→observe→fix; error translation; intent-preserving retries
     eval.js            — standing eval set + 4-axis rubric + overfit canaries + routing heuristic
+  Animation.js         — Animations sidebar tab: keyframe authoring (create/key/interpolate/play, channels, snap) + AI addClip target
   Menubar.Git.js       — Git settings/load/commit, auto-load, raw fetch, diff messages
   SceneDiff.js         — semantic scene diff (added/removed/modified)
   MergeViewport.js     — split-screen conflict review + resolution
@@ -546,6 +588,7 @@ docs/editor/js/
 ✅  Standing eval harness (evalAI, 4-axis rubric + overfit canaries) · two-tier routing
 ✅  M6: AI selection criteria (selectTopFaces, selectFacingUp, selectBoundaryEdges)
 ✅  Dev mode: Optional external APIs (Ollama, OpenAI, Claude) · dropdown model selection · askExternal() REPL function
+✅  Keyframe animation: Animations-tab authoring (create/key/interpolate/play) + AI clip authoring (addClip, track-name convention, eval tier)
 ⬜  M7: glTF / OBJ import helpers + recipe-aware export
 ⬜  M8: Advanced texture/UV tools, material property setters, texture baking
 ⬜  Optional vision layer (precise nouns, OCR) — separate spec, needs a model

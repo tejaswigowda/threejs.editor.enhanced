@@ -38,10 +38,28 @@ function Sidebar( editor ) {
 
 	const sidebarProperties = new SidebarProperties( editor );
 
-	const scene = new UISpan().add(
-		new SidebarScene( editor ),
-		sidebarProperties
-	);
+	const sidebarScene = new SidebarScene( editor );
+
+	const scene = new UISpan().add( sidebarScene );
+
+	// Place the selected-object tabbed panel (Object/Geometry/Material/Script)
+	// directly beneath the outliner tree, above the scene-level properties
+	// (background / environment / fog / stats).
+	const outlinerDom = sidebarScene.dom.querySelector( '#outliner' );
+
+	if ( outlinerDom !== null ) {
+
+		sidebarScene.dom.insertBefore( sidebarProperties.dom, outlinerDom.nextSibling );
+
+		// Separator between the object panel and the scene-level properties.
+		const separator = document.createElement( 'hr' );
+		sidebarScene.dom.insertBefore( separator, sidebarProperties.dom.nextSibling );
+
+	} else {
+
+		scene.add( sidebarProperties );
+
+	}
 	const project = new SidebarProject( editor );
 	const settings = new SidebarSettings( editor );
 	const git = new SidebarGit( editor );

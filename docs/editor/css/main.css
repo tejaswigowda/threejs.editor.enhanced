@@ -143,6 +143,15 @@ hr {
 		width: 100%;
 	}
 
+/* The object-properties panel is inlined directly under the outliner tree (not
+   the top-level sidebar), so its tab panels must sit in normal document flow.
+   The default `position: absolute` pulled them out of flow and overlapped the
+   scene-level properties (background / environment / fog / stats) below it. */
+#properties > .Panels {
+	position: relative;
+	top: 0;
+}
+
 /* Listbox */
 .Listbox {
 	color: #444;
@@ -1157,7 +1166,7 @@ body.sidebar-bottom #sidebar #shell {
 	position: absolute;
 	left: calc(50% - var( --sidebar-width ) / 2); /* centered in the viewport area (right dock) */
 	transform: translateX(-50%);
-	bottom: 16px;
+	bottom: 6px;
 	height: 32px;
 	background: #eee;
 	text-align: center;

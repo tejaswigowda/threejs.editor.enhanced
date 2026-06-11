@@ -62,7 +62,7 @@ class ViewHelper extends Object3D {
 		// ( e.g. on hover ). Set by the Viewport.
 		this.onRequireRender = null;
 
-		this.location = { top: 30, right: null, bottom: 0, left: 0 };
+		this.location = { top: 10, right: null, bottom: 0, left: 0 };
 
 		const domElement = container.dom;
 
@@ -373,7 +373,7 @@ class ViewHelper extends Object3D {
 		panel.setId( 'viewHelper' );
 		panel.setPosition( 'absolute' );
 		panel.setLeft( '0px' );
-		panel.setTop( '30px' );
+		panel.setTop( '10px' );
 		panel.setHeight( DIM + 'px' );
 		panel.setWidth( DIM + 'px' );
 

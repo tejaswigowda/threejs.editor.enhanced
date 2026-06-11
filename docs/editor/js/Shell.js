@@ -380,6 +380,16 @@ function Shell( editor ) {
 				QuadraticBezierCurve3: window.THREE.QuadraticBezierCurve3,
 				CubicBezierCurve3:    window.THREE.CubicBezierCurve3,
 
+				// ── Keyframe animation ─────────────────────────────────────────────────
+				// Build clips with these tracks, then register with addClip(object, clip).
+				AnimationClip:           window.THREE.AnimationClip,
+				VectorKeyframeTrack:     window.THREE.VectorKeyframeTrack,
+				QuaternionKeyframeTrack: window.THREE.QuaternionKeyframeTrack,
+				NumberKeyframeTrack:     window.THREE.NumberKeyframeTrack,
+				ColorKeyframeTrack:      window.THREE.ColorKeyframeTrack,
+				BooleanKeyframeTrack:    window.THREE.BooleanKeyframeTrack,
+				Quaternion:              window.THREE.Quaternion,
+
 				// ── PBR materials ──────────────────────────────────────────────────────
 				MeshPhysicalMaterial: window.THREE.MeshPhysicalMaterial,
 
@@ -770,6 +780,34 @@ function Shell( editor ) {
 					if ( pts.length < 2 ) throw new Error( 'lineFromPoints: need at least 2 points' );
 					const geom = new T.BufferGeometry().setFromPoints( pts );
 					return new T.Line( geom, new T.LineBasicMaterial( { color } ) );
+
+				},
+
+				// addClip(object, clip) — register a finished AnimationClip on `object`
+				// (defaults to the scene) so it shows up in the Animations panel and can
+				// be played. Track names MUST be "<object.uuid>.<property>" (position /
+				// scale → VectorKeyframeTrack[3], quaternion → QuaternionKeyframeTrack[4]).
+				// Selects the animated object so the new clip is visible. Returns the clip.
+				addClip: function ( object, clip ) {
+
+					const target = ( object && object.isObject3D ) ? object : editor.scene;
+					if ( ! clip || ! clip.isAnimationClip ) throw new Error( 'addClip: second arg must be an AnimationClip' );
+					if ( ! Array.isArray( target.animations ) ) target.animations = [];
+					target.animations.push( clip );
+					if ( editor.mixer ) editor.mixer.uncacheRoot( target );
+
+					if ( target !== editor.scene ) {
+
+						editor.select( target );
+
+					} else {
+
+						editor.signals.objectSelected.dispatch( editor.scene );
+
+					}
+
+					appendOutput( 'Added clip "' + ( clip.name || 'Clip' ) + '" (' + clip.tracks.length + ' track' + ( clip.tracks.length === 1 ? '' : 's' ) + ', ' + ( clip.duration >= 0 ? clip.duration.toFixed( 2 ) + 's' : 'auto' ) + ') — open the Animations tab to play it.', 'result' );
+					return clip;
 
 				},
 

@@ -65,9 +65,11 @@ const MATERIALS = [
 // "is this a real class" in validation.
 const CORE_CLASSES = [
 	'Mesh', 'Group', 'Line', 'Points', 'Shape', 'Path',
-	'Color', 'Vector3', 'Vector2', 'Euler',
+	'Color', 'Vector3', 'Vector2', 'Euler', 'Quaternion',
 	'CatmullRomCurve3', 'QuadraticBezierCurve3', 'CubicBezierCurve3',
 	'DirectionalLight', 'PointLight', 'AmbientLight', 'SpotLight', 'HemisphereLight',
+	'AnimationClip', 'VectorKeyframeTrack', 'QuaternionKeyframeTrack',
+	'NumberKeyframeTrack', 'ColorKeyframeTrack', 'BooleanKeyframeTrack',
 ];
 
 // ── Index state ───────────────────────────────────────────────────────────────
@@ -86,7 +88,7 @@ export const SCOPE_FUNCTIONS = new Set( [
 	'diagnoseImport', 'relabelAsset',
 	'enterEditMode', 'exitEditMode', 'extrude', 'inset', 'bevel', 'deleteFaces', 'weld', 'planarUV', 'boxUV',
 	'booleanUnion', 'booleanSubtract', 'booleanIntersect', 'mirrorMesh', 'arrayDuplicate', 'subdivide',
-	'objectToJS', 'sceneToJS', 'sceneEqual', 'showJS',
+	'objectToJS', 'sceneToJS', 'sceneEqual', 'showJS', 'addClip',
 ] );
 
 // source: 'curated' (hand-verified, authoritative) | 'three' (tern typedefs).
@@ -108,7 +110,14 @@ export function buildIndex() {
 	for ( const c of COMMANDS )  { _addChunk( c.name, 'command', c.sig, c.use ); ALLOWED_CLASSES.add( c.name ); }
 	for ( const m of MATERIALS ) { _addChunk( m.name, 'material', m.sig, m.use ); ALLOWED_CLASSES.add( m.name ); }
 	for ( const c of CORE_CLASSES ) ALLOWED_CLASSES.add( c );
-
+	// Keyframe-animation API — curated chunks so retrieval teaches the exact
+	// track/clip signatures and the addClip(object, clip) registration helper.
+	_addChunk( 'addClip', 'op', 'addClip(object, clip)', 'register a finished AnimationClip on an object (default scene) so it shows in the Animations panel and can be played' );
+	_addChunk( 'AnimationClip', 'animation', 'new AnimationClip(name, duration, tracks[])', 'a named animation; pass duration -1 to auto-compute from track times' );
+	_addChunk( 'VectorKeyframeTrack', 'animation', "new VectorKeyframeTrack(obj.uuid+'.position', times[], values[])", 'animate position or scale; values are flattened x,y,z per time (3 per keyframe)' );
+	_addChunk( 'QuaternionKeyframeTrack', 'animation', "new QuaternionKeyframeTrack(obj.uuid+'.quaternion', times[], values[])", 'animate rotation; values are flattened x,y,z,w per time (4 per keyframe) from Quaternion.setFromEuler' );
+	_addChunk( 'NumberKeyframeTrack', 'animation', "new NumberKeyframeTrack(obj.uuid+'.material.opacity', times[], values[])", 'animate a single numeric property (1 value per keyframe)' );
+	_addChunk( 'ColorKeyframeTrack', 'animation', "new ColorKeyframeTrack(obj.uuid+'.material.color', times[], values[])", 'animate a color; values are flattened r,g,b per time (3 per keyframe)' );
 	// Geometry constructors from the supported-params table
 	for ( const [ type, order ] of Object.entries( PARAM_ORDER ) ) {
 
