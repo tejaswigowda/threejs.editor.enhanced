@@ -30,7 +30,9 @@ function Viewport( editor ) {
 	container.setId( 'viewport' );
 	container.setPosition( 'absolute' );
 
-	container.add( new ViewportControls( editor ) );
+	const vControls = ViewportControls( editor );
+	container.add( vControls[ 0 ] );
+	container.add( vControls[ 1 ] );
 
 	//
 

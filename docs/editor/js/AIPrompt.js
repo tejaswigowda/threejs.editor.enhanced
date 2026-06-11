@@ -97,8 +97,9 @@ RULES:
 12. PART REFERENCES — editing a SUBSET of an imported asset's parts. Two helpers, ALWAYS use one:
    MULTIPLE parts ("the wheels","the tail lights","the windows") → findParts(text) → ARRAY of meshes.
    SINGLE part ("the truck body","the cab","the flat panel on top") → findByDescription(text) → ONE node or null.
-   Both match the Stage-4 import labels (userData.label, e.g. "Dump Bed","Front Left Wheel") AND node
-   names, so opaque Object_20..23 assets are still addressable. Null/empty-guard and STOP — never fall
+   Both match the Stage-4 import labels (userData.label, e.g. "Dump Bed","Front Left Wheel"), node
+   names, AND material names ("Rims"→wheels, "Grille"→grille, "Glass"→windows), so opaque Object_20..23
+   assets are still addressable. Null/empty-guard and STOP — never fall
    back to recoloring the whole asset.
    Worked example — "make the truck body red" (SINGLE part, do NOT traverse the truck):
      (function(){ const body=findByDescription('truck body'); if(!body)return;

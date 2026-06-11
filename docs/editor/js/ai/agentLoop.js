@@ -172,6 +172,101 @@ function countColorWords( intent ) {
 
 }
 
+// ── C7. Subset-request-but-ALL-parts-changed (wrong resolution) ──────────────
+// "Count of meshes changed" ≠ "right parts changed". If the user named a SUBSET
+// ("wheels","body","the grille") but the edit touched EVERY part of a multi-part
+// imported asset, that is a PROBABLE WRONG RESOLUTION (the blind traverse-all
+// failure), NOT a success — flag it and steer the model to findParts/findByDescription.
+//
+// Pure + node-testable. The caller supplies the asset part-name sets so this needs
+// no THREE/scene access.
+const SUBSET_STOP = new Set( [ 'the', 'a', 'an', 'and', 'or', 'of', 'on', 'in', 'to', 'into',
+	'make', 'turn', 'set', 'change', 'paint', 'recolor', 'recolour', 'colour', 'color', 'this',
+	'that', 'these', 'those', 'with', 'for', 'its', 'their', 'be', 'should', 'please',
+	// whole-asset words — their presence means the user addressed the WHOLE thing
+	'all', 'every', 'everything', 'whole', 'entire', 'each',
+	// modifiers carry no part identity
+	'bigger', 'smaller', 'larger', 'darker', 'lighter', 'brighter',
+	...COLOR_WORDS ] );
+
+// Words that, when present, mean the request is explicitly about the WHOLE asset
+// (so an all-parts change is correct, not a misresolution).
+const WHOLE_WORDS = new Set( [ 'all', 'every', 'everything', 'whole', 'entire', 'each' ] );
+
+function subsetContentNouns( intent ) {
+
+	const out = [];
+	for ( const w of String( intent || '' ).toLowerCase().split( /[^a-z0-9]+/ ) ) {
+
+		if ( w.length < 3 || SUBSET_STOP.has( w ) ) continue;
+		out.push( w );
+
+	}
+	return out;
+
+}
+
+/**
+ * @param {string} intent
+ * @param {Set<string>} changedNames  names of meshes changed this turn
+ * @param {Array<{ name:string, label?:string, meshNames:string[] }>} assets
+ *        imported multi-part roots (each with the names of ALL its part meshes)
+ * @returns {{ asset:string, noun:string, count:number } | null}
+ */
+export function flagSubsetAllChanged( intent, changedNames, assets ) {
+
+	const words = String( intent || '' ).toLowerCase().split( /[^a-z0-9]+/ );
+	if ( words.some( w => WHOLE_WORDS.has( w ) ) ) return null; // explicit whole-asset request
+
+	const nouns = subsetContentNouns( intent );
+	if ( ! nouns.length ) return null; // no part noun → not a subset request
+
+	for ( const asset of ( assets || [] ) ) {
+
+		const parts = asset.meshNames || [];
+		if ( parts.length < 3 ) continue; // only meaningful for multi-part assets
+
+		// If the request names the ASSET itself ("make the truck red"), an all-parts
+		// change is the correct interpretation — don't flag.
+		const assetText = ( ( asset.label || '' ) + ' ' + ( asset.name || '' ) ).toLowerCase();
+		if ( nouns.some( n => assetText.includes( n ) ) ) continue;
+
+		// Did EVERY part of this asset change?
+		if ( parts.every( m => changedNames.has( m ) ) ) {
+
+			return { asset: asset.label || asset.name, noun: nouns[ 0 ], count: parts.length };
+
+		}
+
+	}
+
+	return null;
+
+}
+
+// Build the imported multi-part asset inventory the C7 check needs from the live
+// scene: each imported root → the names of ALL its descendant part meshes.
+function importedMultiPartAssets( editor ) {
+
+	const assets = [];
+	if ( ! editor || ! editor.scene ) return assets;
+
+	for ( const root of editor.scene.children ) {
+
+		if ( root.isCamera || ! root.userData || ! root.userData.imported ) continue;
+		const meshNames = [];
+		root.traverse( o => { if ( o.isMesh ) meshNames.push( o.name || o.type ); } );
+		if ( meshNames.length >= 3 ) {
+
+			assets.push( { name: root.name || root.type, label: root.userData.label || '', meshNames } );
+
+		}
+
+	}
+	return assets;
+
+}
+
 // "No effect" observation translation (C2). "Nothing changed" is as uninformative
 // as a raw error — name the likely CAUSE so the model can act on it.
 function diagnoseNoEffect( code, reason ) {
@@ -217,6 +312,9 @@ export async function runAgentic( { editor, messages, intent, deps, maxRetries =
 	// the planning ceiling, so retrying a spatial defect more than once risks a
 	// churn loop that ends worse than the first try. One measured nudge, then accept.
 	let spatialRepaired = false;
+
+	// C7 subset-misresolution correction is likewise capped to ONE corrective pass.
+	let subsetRepaired = false;
 
 	for ( let attempt = 0; attempt <= maxRetries; attempt ++ ) {
 
@@ -343,6 +441,30 @@ export async function runAgentic( { editor, messages, intent, deps, maxRetries =
 
 				appendOutput( `⟳ colors collapsed to ${ distinct } (asked ${ wantColors }) — retrying (${ attempt + 1 }/${ maxRetries })…`, 'info' );
 				lastFail = { code, error: 'you recolored multiple objects but they SHARE one material, so all show the same color. Give each its OWN material (new Material per mesh) before setting colors, then set each distinct color.' };
+				continue;
+
+			}
+
+		}
+
+		// C7 — SUBSET request but ALL parts changed = probable WRONG RESOLUTION.
+		// "make the wheels black" that recolored every one of the 12 truck meshes is
+		// NOT a success (count-changed ≠ right-parts-changed). Flag it and steer the
+		// model to resolve the specific parts via findParts/findByDescription instead
+		// of traversing the whole asset. Capped to one corrective pass (subsetRepaired).
+		if ( ! subsetRepaired && attempt < maxRetries ) {
+
+			const changedNames = new Set( [ ...diff.recolored, ...diff.moved, ...diff.scaled ] );
+			const mis = flagSubsetAllChanged( intent, changedNames, importedMultiPartAssets( editor ) );
+			if ( mis ) {
+
+				subsetRepaired = true;
+				appendOutput( `⟳ you changed all ${ mis.count } parts of "${ mis.asset }" but the request named "${ mis.noun }" — resolving the specific parts and retrying (${ attempt + 1 }/${ maxRetries })…`, 'info' );
+
+				// Undo this wrong-resolution attempt so the corrected one doesn't stack.
+				if ( typeof rollbackTo === 'function' && checkpoint !== null ) rollbackTo( checkpoint );
+
+				lastFail = { code, error: `WRONG RESOLUTION: you changed ALL ${ mis.count } parts of the imported asset, but the user asked only for "${ mis.noun }". Do NOT traverse/recolor the whole asset. Resolve the specific parts with findParts('${ mis.noun }') (or findByDescription('${ mis.noun }') for a single part) and edit ONLY those returned nodes. If it returns nothing, STOP and tell the user the part could not be resolved.` };
 				continue;
 
 			}

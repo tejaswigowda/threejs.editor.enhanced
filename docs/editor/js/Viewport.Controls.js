@@ -4,21 +4,20 @@ function ViewportControls( editor ) {
 
 	const signals = editor.signals;
 
-	const container = new UIPanel();
-	container.setPosition( 'absolute' );
-	container.setRight( '10px' );
-	container.setTop( '10px' );
+	// camera panel — bottom left
 
-	// camera
+	const cameraPanel = new UIPanel();
+	cameraPanel.setPosition( 'absolute' );
+	cameraPanel.setLeft( '10px' );
+	cameraPanel.setBottom( '10px' );
 
 	const cameraSelect = new UISelect();
-	cameraSelect.setMarginRight( '10px' );
 	cameraSelect.onChange( function () {
 
 		editor.setViewportCamera( this.getValue() );
 
 	} );
-	container.add( cameraSelect );
+	cameraPanel.add( cameraSelect );
 
 	signals.cameraAdded.add( update );
 	signals.cameraRemoved.add( update );
@@ -32,7 +31,12 @@ function ViewportControls( editor ) {
 
 	} );
 
-	// shading
+	// shading panel — bottom right
+
+	const shadingPanel = new UIPanel();
+	shadingPanel.setPosition( 'absolute' );
+	shadingPanel.setRight( '10px' );
+	shadingPanel.setBottom( '10px' );
 
 	const shadingSelect = new UISelect();
 	shadingSelect.setOptions( { 'realistic': 'realistic', 'solid': 'solid', 'normals': 'normals', 'wireframe': 'wireframe' } );
@@ -42,7 +46,7 @@ function ViewportControls( editor ) {
 		editor.setViewportShading( this.getValue() );
 
 	} );
-	container.add( shadingSelect );
+	shadingPanel.add( shadingSelect );
 
 	signals.editorCleared.add( function () {
 
@@ -91,7 +95,7 @@ function ViewportControls( editor ) {
 
 	}
 
-	return container;
+	return [ cameraPanel, shadingPanel ];
 
 }
 

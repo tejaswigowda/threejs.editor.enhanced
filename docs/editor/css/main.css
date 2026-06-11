@@ -132,7 +132,8 @@ hr {
 		letter-spacing: 0.04em;
 		line-height: 1;
 		text-align: center;
-		width: 100%;
+    	display: block;
+	    margin-top: 5px;
 	}
 
 	.TabbedPanel .Panels {
@@ -1156,7 +1157,7 @@ body.sidebar-bottom #sidebar #shell {
 	position: absolute;
 	left: calc(50% - var( --sidebar-width ) / 2); /* centered in the viewport area (right dock) */
 	transform: translateX(-50%);
-	bottom: 56px;
+	bottom: 16px;
 	height: 32px;
 	background: #eee;
 	text-align: center;

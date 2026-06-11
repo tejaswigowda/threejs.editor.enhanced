@@ -19,11 +19,13 @@
 //     childCount, depth, parentName,
 //     adjacency: [names...],        siblings whose bbox this overlaps
 //     color: { name, base, hex } | null,
+//     materials: [string...],       decoded material name(s) ("Rims","Grille")
 //     pair: { mateUuid, axis, side } | null
 //   }
 
 import { colorToName, rgbToColorName } from './colorName.js';
 import { detectSymmetryPairs } from './symmetry.js';
+import { materialNames } from '../scene/summarize.js';
 
 const SCHEMA = 1;
 
@@ -210,7 +212,25 @@ function groupColor( node ) {
 
 }
 
-// ── Main: index a subtree ─────────────────────────────────────────────────────
+// ── Material names (decoded, de-duplicated) ───────────────────────────────────
+// glTF carries semantic material names ("Rims", "Grille", "Tail Light") even when
+// every mesh is an opaque Object_N — high-value resolution + labeling hints. For a
+// mesh: its own material name(s); for a group: the union over descendant meshes.
+
+function materialsOf( node ) {
+
+	if ( node.isMesh ) return materialNames( node );
+
+	const out = [];
+	node.traverse( c => {
+
+		if ( ! c.isMesh ) return;
+		for ( const m of materialNames( c ) ) if ( ! out.includes( m ) ) out.push( m );
+
+	} );
+	return out;
+
+}
 
 /**
  * Compute descriptors for every node in `root`'s subtree (including root).
@@ -307,6 +327,7 @@ export function indexSubtree( root, force = false ) {
 			parentName: ( n.parent && n.parent !== root ? ( n.parent.name || n.parent.type ) : ( root.name || 'root' ) ),
 			adjacency,
 			color: color || null,
+			materials: materialsOf( n ),
 			pair: null, // filled in symmetry pass
 		};
 

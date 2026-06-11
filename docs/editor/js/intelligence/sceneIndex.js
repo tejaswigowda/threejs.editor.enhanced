@@ -209,10 +209,14 @@ function partNouns( q ) {
 
 }
 
-// Decoded, lowercased label + node name for a node (what the user calls it).
+// Decoded, lowercased label + node name + material name(s) for a node (what the
+// user calls it). Material names ("Rims","Grille") are included so a part is
+// matchable by its material even when its node name is an opaque Object_N.
 function nodeText( n ) {
 
-	const s = ( n.userData && n.userData.label ? n.userData.label + ' ' : '' ) + ( n.name || '' );
+	const d = n.userData && n.userData.descriptors;
+	const mats = d && d.materials && d.materials.length ? ' ' + d.materials.join( ' ' ) : '';
+	const s = ( n.userData && n.userData.label ? n.userData.label + ' ' : '' ) + ( n.name || '' ) + mats;
 	return decodeName( s ).toLowerCase();
 
 }

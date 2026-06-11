@@ -45,7 +45,7 @@ export function decodeName( s ) {
 }
 
 // Collect a mesh's material name(s), decoded, de-duplicated.
-function materialNames( obj ) {
+export function materialNames( obj ) {
 
 	const mats = Array.isArray( obj.material ) ? obj.material : [ obj.material ];
 	const names = [];

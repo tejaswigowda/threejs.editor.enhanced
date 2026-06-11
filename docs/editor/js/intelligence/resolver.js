@@ -146,6 +146,26 @@ export function scoreCandidates( nodes, q ) {
 
 		}
 
+		// Material-name match — glTF carries semantic material names ("Rims",
+		// "Grille", "Glass") even when every mesh is an opaque Object_N. They are a
+		// strong identity signal: "make the grille silver" matches material "Grille".
+		// Weighted like a meaningful node name (just under an LLM label).
+		const materials = d.materials;
+		if ( materials && materials.length && q.tokens.length ) {
+
+			const mm = materials.join( ' ' ).toLowerCase();
+			let hits = 0;
+			for ( const w of q.tokens ) {
+
+				if ( w.length < 3 || LABEL_STOP.has( w ) ) continue;
+				if ( mm.includes( w ) ) hits ++;
+
+			}
+
+			if ( hits > 0 ) { score += 3 * hits; reasons.push( 'material:' + materials.join( '/' ) ); }
+
+		}
+
 		// Color
 		if ( q.colors.length && d.color ) {
 
@@ -214,6 +234,7 @@ function descriptorLine( id, node ) {
 	if ( reg.length ) bits.push( reg.join( '/' ) );
 	if ( d.pair ) bits.push( `pair→${ d.pair.mateName }(${ d.pair.side })` );
 	if ( d.sizeRank !== 'medium' ) bits.push( d.sizeRank );
+	if ( d.materials && d.materials.length ) bits.push( `material:"${ d.materials.join( '/' ) }"` );
 	bits.push( `parent:${ d.parentName }` );
 	return `${ id }  ${ bits.join( ', ' ) }`;
 

@@ -20,8 +20,10 @@ const MAX_NODES = 40; // context budget — never dump a 200-node table
 
 const LABEL_SYSTEM =
 `You name the parts of a 3D model from a descriptor table (you cannot see geometry).
-Each row: an id, then derived facts (shape, color, region, size, symmetry pair, parent, original-name-hint).
-Reply with one line per id you can name: "<id>: <short human label>".
+Each row: an id, then derived facts (shape, color, region, size, symmetry pair, parent, MATERIAL name, original-name-hint).
+The MATERIAL name is a STRONG hint — "Rims"→wheel, "Grille"→grille, "Glass"→window — weight it heavily.
+Reply with one line per id you can name: "<id>: <short human label> | <confidence 0-1>".
+The confidence (how sure you are, 0-1) is OPTIONAL but helpful; omit it if unsure how to score.
 Use concrete part nouns (e.g. "Tail Light (right)", "Dump Bed", "Cab", "Front Left Wheel").
 Convention: +X / RIGHT = the model's own right. Skip ids you genuinely cannot name. No other text.`;
 
@@ -55,6 +57,10 @@ function row( id, node ) {
 	if ( d.sizeRank !== 'medium' ) bits.push( d.sizeRank );
 	bits.push( `parent:${ d.parentName }` );
 
+	// Material name(s) — a STRONG semantic hint that survives opaque Object_N names
+	// ("Rims"→wheel, "Grille"→grille). Decoded already by the harvest.
+	if ( d.materials && d.materials.length ) bits.push( `material:"${ d.materials.join( '/' ) }"` );
+
 	// Original name only as a HINT, and only if it isn't an exporter placeholder.
 	const hint = isMeaningfulName( node.name ) ? `, hint:"${ decodeName( node.name ) }"` : '';
 
@@ -85,12 +91,15 @@ export function buildLabelTable( root ) {
 // ── Parse the LLM reply ───────────────────────────────────────────────────────
 
 /**
- * Parse "id: Label" lines into a Map. Tolerant of ":", "=", "-" separators and
- * surrounding quotes/bullets. Ignores anything that doesn't look like a row.
+ * Parse "id: Label | confidence" lines into a Map of { label, confidence }.
+ * Tolerant of ":", "=", "-" separators and surrounding quotes/bullets. The
+ * confidence is OPTIONAL — accepts a trailing "| 0.8", "(0.8)" or " 0.8"; when
+ * absent the label is kept with a neutral default the caller can treat as "ok".
+ * Ignores anything that doesn't look like a row.
  * @param {string} text
- * @returns {Map<string,string>}
+ * @returns {Map<string,{ label:string, confidence:number|null }>}
  */
-export function parseLabelReply( text ) {
+export function parseLabelRows( text ) {
 
 	const out = new Map();
 	for ( const raw of String( text || '' ).split( /\r?\n/ ) ) {
@@ -99,10 +108,32 @@ export function parseLabelReply( text ) {
 		const m = line.match( /^([\w.-]+)\s*[:=]\s*(.+)$/ );
 		if ( ! m ) continue;
 		const id = m[ 1 ];
-		let label = m[ 2 ].trim().replace( /^["'`]|["'`]$/g, '' ).trim();
-		if ( label ) out.set( id, label );
+		let rest = m[ 2 ].trim();
+
+		// Pull an OPTIONAL confidence off the end: "Label | 0.8", "Label (0.8)".
+		let confidence = null;
+		let cm = rest.match( /\s*[|(]\s*(0(?:\.\d+)?|1(?:\.0+)?)\s*\)?\s*$/ );
+		if ( cm ) { confidence = parseFloat( cm[ 1 ] ); rest = rest.slice( 0, cm.index ).trim(); }
+
+		const label = rest.replace( /^["'`]|["'`]$/g, '' ).trim();
+		if ( label ) out.set( id, { label, confidence } );
 
 	}
+	return out;
+
+}
+
+/**
+ * Back-compat label-only parse: Map<id, label>. Delegates to parseLabelRows and
+ * drops the confidence (kept so existing callers/tests that only want the label
+ * still work).
+ * @param {string} text
+ * @returns {Map<string,string>}
+ */
+export function parseLabelReply( text ) {
+
+	const out = new Map();
+	for ( const [ id, row ] of parseLabelRows( text ) ) out.set( id, row.label );
 	return out;
 
 }
@@ -155,7 +186,7 @@ export async function labelImportedAsset( editor, root, opts = {} ) {
 			{ role: 'system', content: LABEL_SYSTEM },
 			{ role: 'user', content: `DESCRIPTOR TABLE:\n${ table }` },
 		], { maxTokens: 400, temperature: 0 } );
-		labels = parseLabelReply( reply );
+		labels = parseLabelRows( reply );
 
 	} catch ( e ) {
 
@@ -164,17 +195,28 @@ export async function labelImportedAsset( editor, root, opts = {} ) {
 
 	}
 
-	let labeled = 0;
-	for ( const [ id, label ] of labels ) {
+	// Low-confidence threshold: labels below this are still stored (so the part is
+	// addressable) but flagged so the resolver/UI can treat them with suspicion and
+	// the user can rename. A missing confidence is treated as neutral (not low).
+	const LOW_CONF = 0.45;
+
+	let labeled = 0, lowConfidence = 0;
+	for ( const [ id, row ] of labels ) {
 
 		const node = idMap.get( id );
 		if ( ! node ) continue;
-		node.userData.label = label;
+		node.userData.label = row.label;
+		if ( row.confidence !== null && row.confidence !== undefined ) {
+
+			node.userData.labelConfidence = row.confidence;
+			if ( row.confidence < LOW_CONF ) { node.userData.labelLowConfidence = true; lowConfidence ++; }
+
+		}
 		labeled ++;
 
 	}
 
-	root.userData.labelPass = { v: 1, mergedMesh: false, labeled, total: nodes.length };
-	return { labeled, total: nodes.length };
+	root.userData.labelPass = { v: 1, mergedMesh: false, labeled, lowConfidence, total: nodes.length };
+	return { labeled, lowConfidence, total: nodes.length };
 
 }

@@ -321,5 +321,105 @@ test( 'matchPartNodes best-guesses ONE mesh (not all) when an asset has no label
 
 } );
 
+// ── S4: label confidence parsing (parseLabelRows) ─────────────────────────────
+const { parseLabelRows } = await import( path.join( importDir, 'labelPass.js' ) );
+
+console.log( 'labelPass.js — confidence' );
+
+test( 'parseLabelRows extracts optional confidence ("| 0.9", "(0.4)") and label', () => {
+
+	const m = parseLabelRows( 'n0: Dump Bed | 0.9\nn1: Cab (0.4)\nn2: Grille' );
+	assert.strictEqual( m.get( 'n0' ).label, 'Dump Bed' );
+	assert.strictEqual( m.get( 'n0' ).confidence, 0.9 );
+	assert.strictEqual( m.get( 'n1' ).label, 'Cab' );
+	assert.strictEqual( m.get( 'n1' ).confidence, 0.4 );
+	assert.strictEqual( m.get( 'n2' ).label, 'Grille' );
+	assert.strictEqual( m.get( 'n2' ).confidence, null ); // optional — absent is fine
+
+} );
+
+test( 'parseLabelReply stays label-only + back-compat (confidence stripped)', () => {
+
+	const m = parseLabelReply( 'n0: Dump Bed | 0.9\nn1 = Cab\nn2: Tail Light (right)' );
+	assert.strictEqual( m.get( 'n0' ), 'Dump Bed' ); // confidence stripped, not glued on
+	assert.strictEqual( m.get( 'n1' ), 'Cab' );
+	assert.strictEqual( m.get( 'n2' ), 'Tail Light (right)' ); // "(right)" is NOT a confidence
+
+} );
+
+// ── S5: material-name resolution ──────────────────────────────────────────────
+
+console.log( 'material-name resolution (S5)' );
+
+function meshMat( name, materials, label ) {
+
+	return { isMesh: true, name, children: [],
+		userData: { label, descriptors: { role: 'mesh', materials,
+			region: { x: 'center', y: 'center', z: 'center' }, sizeRank: 'medium', parentName: 'DumpTruck' } } };
+
+}
+
+test( 'matchPartNodes resolves "the grille" via material name on an Object_N mesh', () => {
+
+	const nodes = [
+		meshMat( 'Object_09', [ 'Grille' ] ),
+		meshMat( 'Object_05', [ 'Body' ] ),
+		meshMat( 'Object_20', [ 'Rims' ] ),
+	];
+	const r = matchPartNodes( nodes, 'make the grille silver' );
+	assert.strictEqual( r.method, 'label' ); // label-path now includes material text
+	assert.strictEqual( r.nodes.length, 1 );
+	assert.strictEqual( r.nodes[ 0 ].name, 'Object_09' );
+
+} );
+
+test( 'scoreCandidates ranks material-name match above shape-only ties', () => {
+
+	const nodes = [
+		descNode( 'Object_09', true, { role: 'mesh', shape: 'blocky', materials: [ 'Grille' ],
+			region: { x: 'center', y: 'center', z: 'front' }, sizeRank: 'medium', parentName: 'Truck' } ),
+		descNode( 'Object_04', true, { role: 'mesh', shape: 'blocky', materials: [ 'Body' ],
+			region: { x: 'center', y: 'center', z: 'center' }, sizeRank: 'medium', parentName: 'Truck' } ),
+	];
+	const ranked = scoreCandidates( nodes, parseQuery( 'the grille' ) );
+	assert.strictEqual( ranked[ 0 ].node.name, 'Object_09' );
+	assert.ok( ranked[ 0 ].reasons.some( s => /material/.test( s ) ) );
+
+} );
+
+// ── S6: subset-request-but-all-changed flag (flagSubsetAllChanged) ────────────
+const { flagSubsetAllChanged } = await import( path.join( jsDir, 'ai', 'agentLoop.js' ) );
+
+console.log( 'agentLoop.js — C7 subset misresolution (S6)' );
+
+const TRUCK = [ { name: 'DumpTruck', label: 'Dump Truck',
+	meshNames: [ 'Object_2', 'Object_5', 'Object_7', 'Object_9', 'Object_20', 'Object_21' ] } ];
+
+test( 'flags when "make the wheels black" changed ALL parts of the asset', () => {
+
+	const changed = new Set( TRUCK[ 0 ].meshNames );
+	const f = flagSubsetAllChanged( 'make the wheels black', changed, TRUCK );
+	assert.ok( f, 'should flag wrong resolution' );
+	assert.strictEqual( f.noun, 'wheels' );
+	assert.strictEqual( f.count, 6 );
+
+} );
+
+test( 'does NOT flag when only a subset of parts changed (correct resolution)', () => {
+
+	const changed = new Set( [ 'Object_20', 'Object_21' ] ); // just the wheels
+	const f = flagSubsetAllChanged( 'make the wheels black', changed, TRUCK );
+	assert.strictEqual( f, null );
+
+} );
+
+test( 'does NOT flag a whole-asset request even if all parts changed', () => {
+
+	const changed = new Set( TRUCK[ 0 ].meshNames );
+	assert.strictEqual( flagSubsetAllChanged( 'make the truck red', changed, TRUCK ), null ); // names the asset
+	assert.strictEqual( flagSubsetAllChanged( 'make everything red', changed, TRUCK ), null ); // whole-word
+
+} );
+
 console.log( `\n${ pass } passed, ${ fail } failed` );
 process.exit( fail ? 1 : 0 );

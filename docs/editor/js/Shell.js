@@ -1150,12 +1150,16 @@ function Shell( editor ) {
 
 				// D1 — compositional ceiling: a complex real-world object that came
 				// back as a single primitive likely needs the Power tier's world
-				// knowledge. Surface a hint (don't force-escalate).
+				// knowledge. Surface a hint (don't force-escalate). This is a
+				// GENERATION under-decomposition heuristic ONLY: suppress it on EDITS
+				// (nothing was BUILT — e.g. recoloring the dumptruck's parts adds 0
+				// meshes), where "only one shape was built" is nonsense and the real
+				// issue is part RESOLUTION, not decomposition.
 				if ( res && res.ok && ! aiAborted ) {
 
 					let addedMeshes = 0;
 					editor.scene.traverse( o => { if ( o.isMesh && ! beforeMeshes.has( o.uuid ) ) addedMeshes ++; } );
-					if ( shouldSuggestPower( question, addedMeshes, isPowerModel() ) ) {
+					if ( addedMeshes >= 1 && shouldSuggestPower( question, addedMeshes, isPowerModel() ) ) {
 
 						appendOutput( '💡 This looks like a multi-part object but only one shape was built. Try the "Power" model (7B) for richer decomposition.', 'info' );
 
