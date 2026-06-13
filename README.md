@@ -1,8 +1,12 @@
-# three.js editor — Sovereign AI-Native
+# Strata — Local-First AI for Building 3D Scenes
 
-A fork of the [three.js editor](https://threejs.org/editor/) with an in-browser local LLM that builds, edits, and reasons about 3D scenes via natural language, executes its output through the editor's JS shell (command pattern → undo stack), and versions scenes through git.
+<img src='docs/icon.png'/>
+
+A sovereign, AI-native 3D scene editor that builds, edits, and reasons about scenes via natural language. Local LLM inference, executes output through the integrated JS shell (command pattern → undo stack), and versions scenes through git.
 
 **No server. No API keys. No data leaves the device.**
+
+<img src='docs/demo.png'/>
 
 ---
 
