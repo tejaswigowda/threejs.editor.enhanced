@@ -1,4 +1,4 @@
-<img width=300 src='docs/icon.png'/>
+<img width=200 src='docs/icon.png'/>
 
 
 # Strata — Local-First AI for Building 3D Scenes
