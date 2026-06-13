@@ -1,6 +1,7 @@
-# Strata — Local-First AI for Building 3D Scenes
-
 <img width=300 src='docs/icon.png'/>
+
+
+# Strata — Local-First AI for Building 3D Scenes
 
 A sovereign, AI-native 3D scene editor that builds, edits, and reasons about scenes via natural language. Local LLM inference, executes output through the integrated JS shell (command pattern → undo stack), and versions scenes through git.
 
